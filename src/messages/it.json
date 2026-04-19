@@ -1,0 +1,40 @@
+{
+    "Verification": {
+        "title": "Certificato di Autenticità",
+        "scanResult": "Risultato scansione",
+        "verifiedTitle": "Passaporto autentico",
+        "verifiedSubtitle": "Verificato da OriginPass",
+        "notVerifiedTitle": "Passaporto non trovato",
+        "notVerifiedBody": "Questo codice non corrisponde a nessun passaporto registrato.",
+        "notVerifiedHelp": "Se hai scansionato un QR, verifica l'URL sull'etichetta della marca e riprova.",
+        "brandLabel": "Marca",
+        "passportIdLabel": "ID passaporto",
+        "productLabel": "Prodotto",
+        "verifiedBadge": "Verificato Autentico",
+        "craftsmanship": "Storia dell'Artigianato",
+        "materials": "Origine dei Materiali",
+        "origin": "Origine",
+        "lifecycle": "Ciclo di vita",
+        "euDppAlignedFields": "Campi allineati al DPP UE",
+        "dppDisclaimer": "Non legale: questo passaporto è pensato per allinearsi alle aspettative dati del DPP UE, ma non costituisce certificazione legale.",
+        "productionDate": "Data di Produzione",
+        "artisan": "Mastro Artigiano",
+        "location": "Luogo di Origine",
+        "issuedLabel": "Emesso",
+        "trustTitle": "Perché puoi fidarti",
+        "trustItem1": "Dati del brand bloccati a questo passaporto",
+        "trustItem2": "ID seriale immutabile legato al lotto di produzione",
+        "trustItem3": "Verificato dalla rete OriginPass",
+        "demoLabel": "Passaporto demo",
+        "scanTip": "Tieni aperta questa pagina per rivendita o garanzia.",
+        "unknown": "Sconosciuto",
+        "home": "Home",
+        "breadcrumbVerify": "Verifica",
+        "productImage": "Immagine del Prodotto",
+        "footer": {
+            "poweredBy": "Powered by OriginPass",
+            "tagline": "Passaporto Digitale Immutabile",
+            "disclaimer": "Disclaimer: OriginPass fornisce tecnologia di tracciabilità. Non certifichiamo la conformità normativa né garantiamo l'autenticità delle dichiarazioni fisiche o l'autententicità."
+        }
+    }
+}

@@ -1,0 +1,94 @@
+// Domain model (Product → Passport 1:1 → QRCode 1:1)
+// Production PostgreSQL is managed via `supabase/migrations`. Use this schema for
+// `npx prisma generate` (requires DATABASE_URL) and as the canonical shape for DPP data.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  category    String?
+  origin      String?
+  createdAt   DateTime @default(now())
+
+  passport Passport?
+  // Supabase `products` also includes: sku, brand, json_ld, materials, import_log_id,
+  // origin_country, batch_number, manufacture_date, certifications, import_qr_ref,
+  // compliance_category_key, base_data, compliance_data, traceability_data, ai_metadata (see migrations).
+}
+
+model Passport {
+  id         String   @id @default(cuid())
+  productId  String   @unique
+  story      String?
+  materials  Json?
+  timeline   Json?
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  qrCode  QRCode?
+}
+
+model QRCode {
+  id         String   @id @default(cuid())
+  passportId String @unique
+  url        String
+  imageUrl   String
+  createdAt  DateTime @default(now())
+
+  passport Passport @relation(fields: [passportId], references: [id], onDelete: Cascade)
+}
+
+/// Cached AI translations (see supabase/migrations). Supabase is source of truth.
+model PassportTranslation {
+  id         String   @id @default(cuid())
+  passportId String
+  language   String
+  story      String?
+  materials  Json?
+  timeline   Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([passportId, language])
+}
+
+/// QR funnel events (/scan/{id}); ip stored as hash only in Postgres.
+model ScanEvent {
+  id         String   @id @default(cuid())
+  passportId String
+  scannedAt  DateTime @default(now())
+  ipHash     String?
+  country    String?
+  device     String?
+}
+
+/// Tracked share links /s/{passportId}?sid=&ch=; see supabase/migrations.
+model ShareEvent {
+  id          String   @id @default(cuid())
+  passportId  String   @map("passport_id")
+  channel     String
+  clicks      Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("share_events")
+}
+
+model ShareClick {
+  id          String   @id @default(cuid())
+  shareId     String   @map("share_id")
+  passportId  String   @map("passport_id")
+  clickedAt   DateTime @default(now()) @map("clicked_at")
+  ipHash      String?  @map("ip_hash")
+  userAgent   String?  @map("user_agent")
+
+  @@map("share_clicks")
+}

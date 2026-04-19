@@ -1,0 +1,40 @@
+{
+    "Verification": {
+        "title": "Certificat d'Authenticité",
+        "scanResult": "Résultat du scan",
+        "verifiedTitle": "Passeport authentique",
+        "verifiedSubtitle": "Vérifié par OriginPass",
+        "notVerifiedTitle": "Passeport introuvable",
+        "notVerifiedBody": "Ce code ne correspond à aucun passeport enregistré.",
+        "notVerifiedHelp": "Si ce QR a été scanné, vérifiez l'URL sur l'étiquette de la marque et réessayez.",
+        "brandLabel": "Marque",
+        "passportIdLabel": "ID du passeport",
+        "productLabel": "Produit",
+        "verifiedBadge": "Authentifié",
+        "craftsmanship": "Histoire de l'Artisanat",
+        "materials": "Origine des Matériaux",
+        "origin": "Origine",
+        "lifecycle": "Cycle de vie",
+        "euDppAlignedFields": "Champs alignés DPP UE",
+        "dppDisclaimer": "Non juridique : ce passeport est conçu pour s’aligner sur les attentes de données DPP UE, sans constituer une certification légale.",
+        "productionDate": "Date de Production",
+        "artisan": "Maître Artisan",
+        "location": "Lieu d'Origine",
+        "issuedLabel": "Émis",
+        "trustTitle": "Pourquoi vous pouvez faire confiance",
+        "trustItem1": "Données de marque verrouillées à ce passeport",
+        "trustItem2": "ID de série immuable lié au lot de production",
+        "trustItem3": "Vérifié par le réseau OriginPass",
+        "demoLabel": "Passeport démo",
+        "scanTip": "Gardez cette page ouverte pour la revente ou la garantie.",
+        "unknown": "Inconnu",
+        "home": "Accueil",
+        "breadcrumbVerify": "Vérification",
+        "productImage": "Image du Produit",
+        "footer": {
+            "poweredBy": "Propulsé par OriginPass",
+            "tagline": "Passeport Numérique Immuable",
+            "disclaimer": "Avis de non-responsabilité : OriginPass fournit une technologie de traçabilité. Nous ne certifions pas la conformité réglementaire et ne garantissons pas l'authenticité des allégations physiques faites par les marques."
+        }
+    }
+}

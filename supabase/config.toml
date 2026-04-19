@@ -1,0 +1,6 @@
+project_id = "your-project-ref"
+
+[db]
+shadow_port = 54320
+port = 54321
+major_version = 15

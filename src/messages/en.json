@@ -1,0 +1,40 @@
+{
+    "Verification": {
+        "title": "Certificate of Authenticity",
+        "scanResult": "Scan result",
+        "verifiedTitle": "Authentic Passport",
+        "verifiedSubtitle": "Verified by OriginPass",
+        "notVerifiedTitle": "Passport Not Found",
+        "notVerifiedBody": "This code does not match any registered passport.",
+        "notVerifiedHelp": "If this was a QR scan, confirm the URL matches the brand label and try again.",
+        "brandLabel": "Brand",
+        "passportIdLabel": "Passport ID",
+        "productLabel": "Product",
+        "verifiedBadge": "Verified Authentic",
+        "craftsmanship": "Craftsmanship Story",
+        "materials": "Material Origins",
+        "origin": "Origin",
+        "lifecycle": "Lifecycle",
+        "euDppAlignedFields": "EU DPP-aligned fields",
+        "dppDisclaimer": "Non-legal: This passport is designed to align with EU DPP data expectations but does not constitute legal certification.",
+        "productionDate": "Production Date",
+        "artisan": "Master Artisan",
+        "location": "Origin Location",
+        "issuedLabel": "Issued",
+        "trustTitle": "Why you can trust this",
+        "trustItem1": "Brand-owned data locked to this passport",
+        "trustItem2": "Immutable serial ID tied to production batch",
+        "trustItem3": "Verified by OriginPass traceability network",
+        "demoLabel": "Demo Passport",
+        "scanTip": "Keep this page open for resale or warranty checks.",
+        "unknown": "Unknown",
+        "home": "Home",
+        "breadcrumbVerify": "Verification",
+        "productImage": "Product Image",
+        "footer": {
+            "poweredBy": "Powered by OriginPass",
+            "tagline": "Immutable Digital Passport",
+            "disclaimer": "Disclaimer: OriginPass provides traceability technology. We do not certify regulatory compliance or guarantee the authenticity of physical claims made by brands."
+        }
+    }
+}

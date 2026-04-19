@@ -1,26 +1,240 @@
 @import "tailwindcss";
 
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  button {
+    appearance: none;
+  }
+}
+
+/*
+ * Design system — Tailwind v4 @theme (source of truth).
+ * Classic mirror: tailwind.config.cjs
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Brand & UI (premium slate + accent) */
+  --color-primary: #0f172a;
+  --color-secondary: #6366f1;
+  --color-muted: #64748b;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-danger: #dc2626;
+
+  /* Section / canvas (light neutral — not the indigo `secondary` accent) */
+  --color-canvas: #f8fafc;
+
+  /* Soft icon / chip surfaces */
+  --color-blue-soft: #dbeafe;
+  --color-purple-soft: #ede9fe;
+  --color-green-soft: #dcfce7;
+  --color-orange-soft: #ffedd5;
+
+  /* Legacy ds-* (dashboard, forms) */
+  --color-ds-bg: #f8fafc;
+  --color-ds-surface: #ffffff;
+  --color-ds-primary: #0f172a;
+  --color-ds-secondary: #6366f1;
+  --color-ds-success: #16a34a;
+  --color-ds-warning: #f59e0b;
+  --color-ds-danger: #dc2626;
+  --color-ds-border: #e2e8f0;
+  --color-ds-text: #0f172a;
+  --color-ds-text-muted: #64748b;
+
+  /* Radius */
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.12);
+
+  /* Extra spacing scale (8pt-aligned extras) */
+  --spacing-18: 4.5rem;
+  --spacing-22: 5.5rem;
+
+  /* Motion */
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@utility text-h1 {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 600;
+}
+
+@utility text-h2 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+
+@utility text-h3 {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+}
+
+@utility text-hero {
+  font-size: 44px;
+  line-height: 52px;
+  font-weight: 600;
+}
+
+@utility text-body-lg {
+  font-size: 16px;
+  line-height: 26px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
+  to {
+    opacity: 1;
+  }
+}
+
+@utility animate-fade-in {
+  animation: fade-in 0.35s ease-out forwards;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Landing / marketing: layout + section rhythm */
+.marketing-container {
+  display: block;
+  width: 100%;
+  max-width: 1200px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.marketing-hero-section {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-x: clip;
+  content-visibility: auto;
+}
+
+.marketing-hero-title {
+  font-size: 56px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  color: #111827;
+}
+
+@media (max-width: 767px) {
+  .marketing-hero-title {
+    font-size: 36px;
+  }
+}
+
+.marketing-hero-lead {
+  line-height: 1.6;
+}
+
+/* Hero columns: min-height 0 for flex/grid children */
+.marketing-hero-section .hero-left,
+.marketing-hero-section .hero-right {
+  min-height: 0;
+}
+
+.marketing-hero-section .hero-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.marketing-hero-section .cta-row {
+  gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .marketing-hero-section .cta-row {
+    align-items: center;
+  }
+}
+
+.marketing-hero-section .hero-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 1024px) {
+  .marketing-hero-section .hero-right {
+    justify-content: flex-end;
+  }
+}
+
+.marketing-hero-section .hero-card {
+  width: 100%;
+}
+
+section.marketing-band {
+  padding: 24px 0 !important;
+  margin: 0;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+@media (min-width: 1024px) {
+  section.marketing-band {
+    padding-top: 3rem !important;
+    padding-bottom: 3rem !important;
+  }
+}
+
+section.marketing-band#how-it-works {
+  padding-top: 2.5rem !important; /* pt-10 — rhythm with hero pb-10 */
+  padding-bottom: 5rem !important; /* pb-20 */
+}
+
+#how-it-works h2 {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-secondary);
+  outline-offset: 2px;
 }
