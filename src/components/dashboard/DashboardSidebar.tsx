@@ -31,7 +31,7 @@ const navItems: NavItem[] = [
     href: "/dashboard/products",
     label: "Products",
     icon: Package,
-    children: [{ href: "/product/passports", label: "Passports" }],
+    children: [{ href: "/dashboard/passports", label: "Passports" }],
   },
   {
     href: "/dashboard/authenticity",
@@ -46,36 +46,36 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    href: "/product/qr-identity",
+    href: "/dashboard/qr-identity",
     label: "QR Identity",
     icon: QrCode,
     children: [
-      { href: "/product/qr-identity/generate", label: "Generate codes" },
-      { href: "/product/qr-identity/batch", label: "Batch export" },
-      { href: "/product/qr-identity/print", label: "Print labels" },
+      { href: "/dashboard/qr-identity/generate", label: "Generate codes" },
+      { href: "/dashboard/qr-identity/batch", label: "Batch export" },
+      { href: "/dashboard/qr-identity/print", label: "Print labels" },
     ],
   },
   {
-    href: "/product/ownership",
+    href: "/dashboard/ownership",
     label: "Ownership",
     icon: RefreshCw,
     children: [
-      { href: "/product/ownership/records", label: "Ownership records" },
-      { href: "/product/ownership/warranty", label: "Warranty lifecycle" },
+      { href: "/dashboard/ownership/records", label: "Ownership records" },
+      { href: "/dashboard/ownership/warranty", label: "Warranty lifecycle" },
     ],
   },
   {
-    href: "/analytics",
+    href: "/dashboard/analytics",
     label: "Analytics",
     icon: BarChart3,
     children: [
-      { href: "/analytics/scans", label: "Scan analytics" },
-      { href: "/analytics/locations", label: "Geographic insights" },
-      { href: "/analytics/fraud", label: "Fraud detection" },
+      { href: "/dashboard/scans/scan-analytics", label: "Scan analytics" },
+      { href: "/dashboard/analytics/locations", label: "Geographic insights" },
+      { href: "/dashboard/analytics/fraud", label: "Fraud detection" },
     ],
   },
-  { href: "/integrations", label: "Integrations", icon: Plug },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ]
 
 export default function DashboardSidebar() {

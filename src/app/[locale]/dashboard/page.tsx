@@ -211,7 +211,17 @@ export default async function DashboardPage() {
         console.error('Recent scan events error:', error)
     }
 
-    const verificationRate = totalScans > 0 ? "92%" : "—"
+    let totalVerifications = 0
+    try {
+        const { count } = await supabase
+            .from('verifications')
+            .select('id', { count: 'exact', head: true })
+            .in('passport_id', scopedPassportIds.length ? scopedPassportIds : [nilUuid])
+        totalVerifications = count ?? 0
+    } catch (error) {
+        console.error('Verifications count error:', error)
+    }
+    const verificationRate = totalVerifications > 0 ? totalVerifications.toLocaleString() : "—"
 
     return (
         <div className={spacing.pageStack}>

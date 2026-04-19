@@ -16,7 +16,7 @@ export default async function IntegrationsSectionPage({ params }: { params: Prom
 
     return (
         <div className={spacing.pageStack}>
-            <h1 className="text-3xl font-bold text-slate-900">Integrations: {key.replace("-", " ")}</h1>
+            <h1 className="text-3xl font-bold text-slate-900">Integrations: {key.replace(/-/g, " ")}</h1>
             <p className="text-slate-600">{sections[key]}</p>
             <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Integration module placeholder.</div>
         </div>
