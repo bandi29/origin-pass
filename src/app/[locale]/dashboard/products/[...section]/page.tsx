@@ -53,7 +53,7 @@ export default async function ProductSectionPage({ params }: { params: Promise<{
     const key = section[0]
     return (
         <div className={spacing.pageStack}>
-            <h1 className="text-3xl font-bold text-slate-900">{key.replace("-", " ").replace(/\b\w/g, (m) => m.toUpperCase())}</h1>
+            <h1 className="text-3xl font-bold text-slate-900">{key.replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</h1>
             <p className="text-slate-600">{sections[key]}</p>
             <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Products module placeholder.</div>
         </div>

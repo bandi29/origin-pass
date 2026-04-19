@@ -30,7 +30,7 @@ export default async function ProductsPage() {
         const { data } = await supabase
             .from('products')
             .select('id, name, origin, materials, created_at')
-            .eq('brand_id', user.id)
+            .or(`brand_id.eq.${user.id},organization_id.eq.${user.id}`)
             .eq('is_archived', false)
             .order('created_at', { ascending: false })
         products = data ?? []

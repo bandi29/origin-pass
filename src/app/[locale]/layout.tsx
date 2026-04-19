@@ -27,8 +27,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OriginPass",
-  description: "Artisan Traceability Platform",
+  title: "OriginPass — Digital Product Passports",
+  description: "Verify scans, protect your craft, and give customers confidence — passports, ownership, and analytics in one workspace.",
 };
 
 export default async function LocaleLayout({
