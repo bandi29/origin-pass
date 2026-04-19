@@ -4,9 +4,9 @@ const hasAuthCreds = !!process.env.E2E_EMAIL && !!process.env.E2E_PASSWORD
 
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/en/login")
-  await page.getByPlaceholder("you@brand.com").fill(process.env.E2E_EMAIL || "")
-  await page.getByPlaceholder("Your password").fill(process.env.E2E_PASSWORD || "")
-  await page.getByRole("button", { name: "Sign In" }).click()
+  await page.getByPlaceholder("you@company.com").fill(process.env.E2E_EMAIL || "")
+  await page.getByPlaceholder("••••••••").fill(process.env.E2E_PASSWORD || "")
+  await page.getByRole("button", { name: "Sign in" }).click()
   await page.waitForURL(/\/dashboard/)
 }
 
@@ -61,5 +61,38 @@ test.describe("Dashboard draft flow", () => {
     await expect(page.getByText(/Saved draft removed/i)).toBeVisible()
     await expect(page.getByText(/You have a saved draft/i)).not.toBeVisible()
   })
+
+  test("products page loads with heading and add product form", async ({ page }) => {
+    await login(page)
+    await page.goto("/en/dashboard/products")
+    await expect(page.getByRole("heading", { name: "Products" })).toBeVisible()
+    await expect(page.getByText("Add New Product")).toBeVisible()
+  })
+
+  test("dashboard overview loads KPI cards", async ({ page }) => {
+    await login(page)
+    await page.goto("/en/dashboard")
+    await expect(page.getByText("Total Passports")).toBeVisible()
+    await expect(page.getByText("Total Scans")).toBeVisible()
+    await expect(page.getByText("Verifications")).toBeVisible()
+  })
+
+  test("sidebar navigation links resolve without 404", async ({ page }) => {
+    await login(page)
+    const navLinks = [
+      "/en/dashboard",
+      "/en/dashboard/products",
+      "/en/dashboard/passports",
+      "/en/dashboard/batches",
+      "/en/dashboard/settings",
+      "/en/dashboard/analytics",
+      "/en/dashboard/integrations",
+    ]
+    for (const link of navLinks) {
+      const response = await page.goto(link)
+      expect(response?.status(), `Expected 200 for ${link}`).toBe(200)
+    }
+  })
 })
+
 

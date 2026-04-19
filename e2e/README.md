@@ -1,25 +1,53 @@
-# E2E Test Notes
+# E2E Tests (Playwright)
 
-## Run
+## Setup
 
-- `npm run test:e2e`
-- `npm run test:e2e:headed`
-- `npm run test:e2e:ui`
+```bash
+# Install Playwright browsers (first time only)
+npx playwright install chromium
+```
 
-## Authenticated dashboard flows
+## Running Tests
 
-Some E2E specs require a real signed-in dashboard session and are skipped unless these env vars are set:
+### Public tests (no login needed)
+```bash
+npx playwright test e2e/public-ux.spec.ts
+```
 
-- `E2E_EMAIL`
-- `E2E_PASSWORD`
+### Authenticated tests (requires credentials)
+```bash
+E2E_EMAIL=you@youremail.com E2E_PASSWORD=yourpassword npx playwright test
+```
 
-Optional:
+### Run all tests with UI (recommended for debugging)
+```bash
+npx playwright test --ui
+```
 
-- `E2E_BASE_URL` (defaults to `http://localhost:3000`)
+### View last test report
+```bash
+npx playwright show-report
+```
 
-## Coverage focus
+## Test Files
 
-- Public UX cues (required field legends / support CTA)
-- Product draft save-resume-delete flow
-- Batch step "why disabled" guidance visibility
+| File | What it tests | Auth required |
+|------|--------------|---------------|
+| `public-ux.spec.ts` | Login page fields/modes, support page, home page, auth redirect to login | ❌ No |
+| `dashboard-draft-flow.spec.ts` | Products draft save/resume/delete, dashboard KPI cards, sidebar nav links | ✅ Yes |
+| `dashboard-batch-guidance.spec.ts` | Batch creation page, step checklist guidance | ✅ Yes |
 
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `E2E_EMAIL` | Email of a test account | For auth tests |
+| `E2E_PASSWORD` | Password of a test account | For auth tests |
+| `E2E_BASE_URL` | Base URL (default: `http://localhost:3000`) | No |
+
+## Tips
+
+- Make sure your dev server is running on `localhost:3000` before running tests
+- Use `--headed` flag to watch the browser: `npx playwright test --headed`
+- Use `--debug` flag to step through interactively: `npx playwright test --debug`
+- Use `--ui` for a visual test runner with time-travel debugging
