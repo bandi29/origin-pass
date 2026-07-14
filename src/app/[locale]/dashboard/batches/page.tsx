@@ -7,16 +7,16 @@ import { Layers, ExternalLink } from "lucide-react"
 export default async function BatchesPage({
     searchParams,
 }: {
-    searchParams: Promise<{ productId?: string }>
+    searchParams: Promise<{ productId?: string; context?: string }>
 }) {
-    const { productId: initialProductId } = await searchParams
+    const { productId: initialProductId, context } = await searchParams
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) return null
 
     let products: { id: string; name: string; origin?: string | null; materials?: string | null }[] = []
-    let batches: { id: string; production_run_name: string | null; produced_at: string | null; created_at: string | null; product?: unknown }[] = []
+    let batches: { id: string; product_id: string | null; production_run_name: string | null; produced_at: string | null; created_at: string | null; product?: unknown }[] = []
 
     try {
         const { data } = await supabase
@@ -32,24 +32,42 @@ export default async function BatchesPage({
     try {
         const { data } = await supabase
             .from('batches')
-            .select('id, production_run_name, produced_at, created_at, product:products(name)')
+            .select('id, product_id, production_run_name, produced_at, created_at, product:products(name)')
             .eq('brand_id', user.id)
             .order('created_at', { ascending: false })
-        batches = (data ?? []) as { id: string; production_run_name: string | null; produced_at: string | null; created_at: string | null; product?: unknown }[]
+        batches = (data ?? []) as { id: string; product_id: string | null; production_run_name: string | null; produced_at: string | null; created_at: string | null; product?: unknown }[]
     } catch (error) {
         console.error('Batches fetch error:', error)
     }
 
     const hasProducts = products.length > 0
+    const returnHref = context === "qr-identity" ? "/dashboard/qr-identity/batch" : "/dashboard/batches"
+    const recentProductCounts = new Map<string, { name: string; count: number }>()
+    for (const batch of batches) {
+        if (!batch.product_id) continue
+        const productName =
+            (Array.isArray(batch.product) ? (batch.product as { name?: string }[])[0]?.name : (batch.product as { name?: string })?.name) ||
+            products.find((p) => p.id === batch.product_id)?.name ||
+            "Product"
+        const prev = recentProductCounts.get(batch.product_id)
+        recentProductCounts.set(batch.product_id, {
+            name: productName,
+            count: (prev?.count ?? 0) + 1,
+        })
+    }
+    const recentProducts = Array.from(recentProductCounts.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 5)
+        .map(([id, v]) => ({ id, name: v.name, count: v.count }))
 
     return (
         <div className={spacing.pageStack}>
-            <div>
+            <div className="max-w-5xl">
                 <h1 className="text-3xl font-bold text-slate-900">Batches</h1>
                 <p className="text-slate-500 mt-2">Create production batches and generate digital product passports</p>
             </div>
 
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+            <div className="max-w-5xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                 <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
                     <Layers className="w-5 h-5 text-slate-400" />
                     Create New Batch
@@ -59,7 +77,12 @@ export default async function BatchesPage({
                         Add at least one product to your brand before creating a batch. <Link href="/dashboard/products" className="underline font-medium">Go to Products →</Link>
                     </div>
                 ) : (
-                    <BatchForm products={products} initialProductId={initialProductId} />
+                    <BatchForm
+                        products={products}
+                        initialProductId={initialProductId}
+                        returnHref={returnHref}
+                        recentProducts={recentProducts}
+                    />
                 )}
             </div>
 

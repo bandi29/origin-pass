@@ -7,6 +7,8 @@ export type ProductModule = {
   title: string
   description: string
   icon: LucideIcon
+  /** Soft tint + stroke colors for the icon container on hub cards. */
+  iconTheme?: string
 }
 
 export const productModules: ProductModule[] = [
@@ -16,6 +18,7 @@ export const productModules: ProductModule[] = [
     title: "Digital Product Passports",
     description: "Create structured product records for trust and compliance readiness.",
     icon: FileBadge2,
+    iconTheme: "bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100",
   },
   {
     id: "authenticity",
@@ -23,6 +26,7 @@ export const productModules: ProductModule[] = [
     title: "Authenticity Verification",
     description: "Give customers instant proof a product is genuine.",
     icon: ShieldCheck,
+    iconTheme: "bg-blue-50 text-blue-600 group-hover:bg-blue-100",
   },
   {
     id: "qr-identity",
@@ -30,6 +34,7 @@ export const productModules: ProductModule[] = [
     title: "QR Product Identity",
     description: "Attach unique QR identities to products and batches.",
     icon: QrCode,
+    iconTheme: "bg-violet-50 text-violet-600 group-hover:bg-violet-100",
   },
   {
     id: "ownership",
@@ -37,6 +42,7 @@ export const productModules: ProductModule[] = [
     title: "Ownership & Lifecycle Tracking",
     description: "Track post-purchase ownership and warranty journeys.",
     icon: RefreshCw,
+    iconTheme: "bg-amber-50 text-amber-600 group-hover:bg-amber-100",
   },
 ]
 

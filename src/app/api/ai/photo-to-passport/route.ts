@@ -4,8 +4,10 @@ import type { ProductAiMetadata } from "@/lib/compliance/product-ai-metadata"
 import { createClient } from "@/lib/supabase/server"
 import { checkPhotoPassportRateLimit } from "@/lib/photo-passport-rate-limit"
 import { ensureBrandProfile } from "@/lib/tenancy"
+import { ZodError } from "zod"
 
 export const maxDuration = 60
+export const runtime = "nodejs"
 
 const BUCKET = "product-images"
 const MAX_BYTES_IMAGE = 4 * 1024 * 1024
@@ -162,7 +164,7 @@ export async function POST(req: Request) {
       return Response.json(
         {
           error:
-            "PDF requires Gemini. Set GEMINI_API_KEY on the server (OpenAI accepts images only).",
+            "PDF requires Gemini. Set GEMINI_API_KEY, GOOGLE_AI_API_KEY, GOOGLE_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY (OpenAI accepts images only).",
         },
         { status: 400 },
       )
@@ -170,19 +172,83 @@ export async function POST(req: Request) {
     if (
       msg.includes("GEMINI_API_KEY") ||
       msg.includes("GOOGLE_AI_API_KEY") ||
+      msg.includes("GOOGLE_GENERATIVE_AI_API_KEY") ||
+      msg.includes("GOOGLE_API_KEY") ||
       msg.includes("OPENAI_API_KEY") ||
-      msg.includes("No AI vision provider")
+      msg.includes("No AI vision provider") ||
+      msg.includes("Gemini API key")
     ) {
       return Response.json(
         {
           error:
-            "AI vision is not configured. Set GEMINI_API_KEY (Gemini 1.5 Flash) or OPENAI_API_KEY on the server.",
+            "AI vision is not configured. Set GEMINI_API_KEY, GOOGLE_AI_API_KEY, GOOGLE_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY (Gemini 1.5 Flash), or OPENAI_API_KEY for images only.",
+          ...(process.env.NODE_ENV === "development"
+            ? {
+                debugHint:
+                  "Use one of: GOOGLE_API_KEY, GEMINI_API_KEY, GOOGLE_AI_API_KEY (AI Studio; not NEXT_PUBLIC_*). Default model is gemini-2.0-flash; set GEMINI_VISION_MODEL=gemini-1.5-flash if the model fails. OPENAI_API_KEY is images-only. See README and .env.example. Restart npm run dev after saving.",
+              }
+            : {}),
         },
         { status: 503 },
       )
     }
+
+    if (e instanceof ZodError) {
+      return Response.json(
+        {
+          error:
+            "The model returned data that could not be mapped to the compliance form. Try again or use a clearer document.",
+          ...(process.env.NODE_ENV === "development" ? { issues: e.flatten() } : {}),
+        },
+        { status: 422 },
+      )
+    }
+
+    if (msg.includes("Extraction validation failed")) {
+      return Response.json(
+        {
+          error:
+            "The model returned data that could not be mapped to the compliance form. Try again or use a clearer document.",
+          ...(process.env.NODE_ENV === "development" ? { debugHint: msg } : {}),
+        },
+        { status: 422 },
+      )
+    }
+
+    if (
+      msg.includes("Gemini API request failed") ||
+      msg.includes("GoogleGenerativeAIFetchError") ||
+      msg.includes("[GoogleGenerativeAI Error]") ||
+      msg.includes("API_KEY_INVALID") ||
+      msg.includes("PERMISSION_DENIED") ||
+      msg.includes("RESOURCE_EXHAUSTED")
+    ) {
+      return Response.json(
+        {
+          error:
+            "The AI service could not process this file. Confirm the key is from Google AI Studio, billing/quota is OK, and the Generative Language API is allowed for that key. The app already tries several model names; you can set GEMINI_VISION_MODEL in .env.local to force one.",
+          ...(process.env.NODE_ENV === "development" ? { debugHint: msg.slice(0, 800) } : {}),
+        },
+        { status: 502 },
+      )
+    }
+
+    if (msg.includes("Empty response from Gemini") || msg.includes("Gemini returned non-JSON")) {
+      return Response.json(
+        {
+          error:
+            "The model did not return usable text for this file. Try a smaller PDF, an image export, or a different scan.",
+          ...(process.env.NODE_ENV === "development" ? { debugHint: msg } : {}),
+        },
+        { status: 502 },
+      )
+    }
+
     return Response.json(
-      { error: "Could not read this file. Try a clearer scan or different format." },
+      {
+        error: "Could not read this file. Try a clearer scan or different format.",
+        ...(process.env.NODE_ENV === "development" ? { debugHint: msg.slice(0, 800) } : {}),
+      },
       { status: 500 },
     )
   }

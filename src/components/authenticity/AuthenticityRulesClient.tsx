@@ -168,22 +168,29 @@ export function AuthenticityRulesClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-ds-text-muted">
-          Toggle rules on or off. Changes apply to new verifications immediately
-          (simulated).
-        </p>
-        <Button
+      <div className="mb-6 flex w-full items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-ds-text">
+            Verification rules
+          </h1>
+          <p className="text-sm text-ds-text-muted">
+            Configure verification rules and policies.
+          </p>
+        </div>
+        <button
           type="button"
-          variant="primary"
-          size="md"
-          className="shrink-0 shadow-sm"
           onClick={openCreate}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#0a1128] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-opacity-90"
         >
           <Plus className="h-4 w-4" aria-hidden />
           Create rule
-        </Button>
+        </button>
       </div>
+
+      <p className="text-sm text-ds-text-muted">
+        Toggle rules on or off. Changes apply to new verifications immediately
+        (simulated).
+      </p>
 
       <div className="grid gap-4 md:grid-cols-2">
         {rules.map((rule) => (

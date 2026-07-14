@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useRef } from "react"
 import { Download } from "lucide-react"
-import QRCode from "qrcode"
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react"
 
 type PassportQRTabProps = {
   passportUid: string
@@ -11,53 +11,62 @@ type PassportQRTabProps = {
   baseUrl: string
 }
 
+/**
+ * QR rendering moved off the `qrcode` Node library (~50 KB gzipped, full image
+ * generation toolchain bundled into the client) and onto `qrcode.react`, which
+ * is purpose-built for React and ~5 KB. Downloads are produced by serialising the
+ * already-rendered DOM nodes, so no extra runtime dependency is required.
+ */
 export function PassportQRTab({
   passportUid,
   serialNumber,
   verifyToken,
   baseUrl,
 }: PassportQRTabProps) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const token = verifyToken ?? passportUid
   const verifyUrl = `${baseUrl}/verify/${token}`
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null)
+  const svgContainerRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    QRCode.toDataURL(verifyUrl, { width: 256, margin: 2 }).then(setQrDataUrl)
-  }, [verifyUrl])
-
-  const handleDownload = async (format: "png" | "svg") => {
-    if (format === "png" && qrDataUrl) {
-      const a = document.createElement("a")
-      a.href = qrDataUrl
-      a.download = `passport-${serialNumber}.png`
-      a.click()
-      return
-    }
-    if (format === "svg") {
-      const svg = await QRCode.toString(verifyUrl, { type: "svg", margin: 2 })
-      const blob = new Blob([svg], { type: "image/svg+xml" })
+  const handleDownloadPng = () => {
+    const canvas = canvasContainerRef.current?.querySelector("canvas")
+    if (!canvas) return
+    canvas.toBlob((blob) => {
+      if (!blob) return
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `passport-${serialNumber}.svg`
+      a.download = `passport-${serialNumber}.png`
       a.click()
       URL.revokeObjectURL(url)
-    }
+    }, "image/png")
+  }
+
+  const handleDownloadSvg = () => {
+    const svg = svgContainerRef.current?.querySelector("svg")
+    if (!svg) return
+    const serializer = new XMLSerializer()
+    const source = `<?xml version="1.0" standalone="no"?>\n${serializer.serializeToString(svg)}`
+    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `passport-${serialNumber}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="flex-shrink-0 rounded-xl border border-slate-200 bg-white p-4">
-          {qrDataUrl ? (
-            <img
-              src={qrDataUrl}
-              alt={`QR code for passport ${serialNumber}`}
-              className="h-48 w-48"
-            />
-          ) : (
-            <div className="h-48 w-48 animate-pulse rounded bg-slate-100" />
-          )}
+          <div ref={canvasContainerRef}>
+            <QRCodeCanvas value={verifyUrl} size={192} marginSize={2} level="M" />
+          </div>
+          {/* Off-screen SVG used solely for the SVG download. */}
+          <div ref={svgContainerRef} className="hidden" aria-hidden="true">
+            <QRCodeSVG value={verifyUrl} size={192} marginSize={2} level="M" />
+          </div>
         </div>
         <div className="flex-1 space-y-4">
           <div>
@@ -69,16 +78,15 @@ export function PassportQRTab({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => handleDownload("png")}
-              disabled={!qrDataUrl}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              onClick={handleDownloadPng}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <Download className="h-4 w-4" />
               Download PNG
             </button>
             <button
               type="button"
-              onClick={() => handleDownload("svg")}
+              onClick={handleDownloadSvg}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <Download className="h-4 w-4" />

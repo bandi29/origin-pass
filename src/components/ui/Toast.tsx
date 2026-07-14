@@ -15,12 +15,13 @@ import clsx from "clsx"
 
 type ToastType = "success" | "error" | "info"
 
-type ToastItem = { id: string; type: ToastType; message: string }
+type ToastItem = { id: string; type: ToastType; message: string; description?: string }
 
 type ToastApi = {
-  success: (message: string) => void
-  error: (message: string) => void
-  info: (message: string) => void
+  success: (message: string, description?: string) => void
+  error: (message: string, description?: string) => void
+  /** Single line, or title + body when `description` is passed (info toasts). */
+  info: (message: string, description?: string) => void
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
@@ -33,24 +34,29 @@ export function useToast() {
   return ctx
 }
 
+/** Same API as `useToast` but returns null when no provider (e.g. public routes). */
+export function useOptionalToast(): ToastApi | null {
+  return useContext(ToastContext)
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
-  const push = useCallback((type: ToastType, message: string) => {
+  const push = useCallback((type: ToastType, message: string, description?: string) => {
     const id =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : String(Date.now())
-    setToasts((t) => [...t, { id, type, message }])
+    setToasts((t) => [...t, { id, type, message, description }])
     window.setTimeout(() => {
       setToasts((t) => t.filter((x) => x.id !== id))
     }, 4500)
   }, [])
 
   const api: ToastApi = {
-    success: (m) => push("success", m),
-    error: (m) => push("error", m),
-    info: (m) => push("info", m),
+    success: (m, d) => push("success", m, d),
+    error: (m, d) => push("error", m, d),
+    info: (m, d) => push("info", m, d),
   }
 
   const [mounted, setMounted] = useState(false)
@@ -96,7 +102,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   ) : (
                     <Info className="mt-0.5 h-5 w-5 shrink-0 text-ds-secondary" />
                   )}
-                  <p className="text-sm font-medium leading-snug">{t.message}</p>
+                  {t.description ? (
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold leading-snug">{t.message}</p>
+                      <p className="mt-1 text-xs font-normal leading-relaxed text-slate-600">{t.description}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium leading-snug">{t.message}</p>
+                  )}
                 </div>
               </motion.div>
             ))}

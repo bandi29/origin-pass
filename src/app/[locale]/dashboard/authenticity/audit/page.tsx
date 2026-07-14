@@ -1,19 +1,6 @@
-import { PageHeader } from "@/components/layout/PageHeader"
-import { AuthenticityAuditLogsClient } from "@/components/authenticity/AuthenticityAuditLogsClient"
-import { requireAuth } from "@/lib/require-auth"
-import { getAuditLogForUser } from "@/lib/authenticity-server-data"
+import { redirect } from "next/navigation"
+import { VERIFICATION_ROUTES } from "@/lib/verification-nav"
 
-export default async function DashboardAuthenticityAuditPage() {
-  const { user } = await requireAuth()
-  const initialRows = await getAuditLogForUser(user.id, 200)
-
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Compliance & audit"
-        description="DPP-ready event history with export for audits and regulators."
-      />
-      <AuthenticityAuditLogsClient initialRows={initialRows} />
-    </div>
-  )
+export default function DashboardAuthenticityAuditRedirect() {
+  redirect(VERIFICATION_ROUTES.audit)
 }

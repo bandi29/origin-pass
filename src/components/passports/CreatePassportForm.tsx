@@ -4,6 +4,8 @@ import { useState } from "react"
 import { Link } from "@/i18n/navigation"
 import { ChevronRight, Loader2 } from "lucide-react"
 import { createPassportAction } from "@/actions/create-passport"
+import { ProductPickerCombobox } from "@/components/dashboard/ProductPickerCombobox"
+import { ProductRequiredForPassportModal } from "@/components/passports/ProductRequiredForPassportModal"
 
 type Step = 1 | 2 | 3 | 4
 
@@ -14,11 +16,25 @@ const STEPS: { num: Step; title: string }[] = [
   { num: 4, title: "QR Identity" },
 ]
 
+const btnPrimary =
+  "inline-flex cursor-pointer items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+
+const btnSecondary =
+  "inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+
+const linkPrimary =
+  "inline-flex cursor-pointer items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+
+const linkSecondary =
+  "inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+
 type CreatePassportFormProps = {
-  products: { id: string; name: string }[]
+  products: { id: string; name: string; incomplete?: boolean }[]
+  /** Defaults to product-area create flow. */
+  createAnotherHref?: string
 }
 
-export function CreatePassportForm({ products }: CreatePassportFormProps) {
+export function CreatePassportForm({ products, createAnotherHref = "/dashboard/product-identity/passports/create" }: CreatePassportFormProps) {
   const [step, setStep] = useState<Step>(1)
   const [productId, setProductId] = useState("")
   const [serialFormat, setSerialFormat] = useState("OP-{SEQ}")
@@ -34,7 +50,14 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
   } | null>(null)
 
   const handleStep1Next = () => {
-    if (productId) setStep(2)
+    if (!productId) return
+    const picked = products.find((p) => p.id === productId)
+    if (picked?.incomplete) {
+      setError("This product is missing Origin or a product image. Complete it before issuing a passport.")
+      return
+    }
+    setError(null)
+    setStep(2)
   }
 
   const handleStep2Next = () => {
@@ -68,6 +91,10 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
   }
 
   const selectedProduct = products.find((p) => p.id === productId)
+
+  if (products.length === 0) {
+    return <ProductRequiredForPassportModal />
+  }
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -103,29 +130,34 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
       )}
 
       {step === 1 && (
-        <div className="space-y-4">
-          <label className="block text-sm font-medium text-slate-700">
-            Product
-          </label>
-          <select
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-900 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300"
-            disabled={loading}
-          >
-            <option value="">Select a product</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+        <div className="max-w-md space-y-4">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-700">Product</label>
+            <ProductPickerCombobox
+              items={products.map((p) => ({
+                productId: p.id,
+                productName: p.name,
+                incomplete: p.incomplete,
+              }))}
+              value={productId || null}
+              onChange={(id) => setProductId(id ?? "")}
+              allowAll={false}
+              placeholder="Select a product"
+              disabled={loading}
+              className="w-full max-w-md"
+            />
+            <p className="text-xs text-slate-500">
+              Products tagged{" "}
+              <span className="font-semibold text-amber-700">Incomplete</span> are missing Origin or a
+              product image and can&apos;t be issued until fixed.
+            </p>
+          </div>
           <div className="flex justify-end">
             <button
               type="button"
               onClick={handleStep1Next}
               disabled={!productId}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+              className={btnPrimary}
             >
               Next
             </button>
@@ -190,15 +222,11 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
             <button
               type="button"
               onClick={() => setStep(1)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className={btnSecondary}
             >
               Back
             </button>
-            <button
-              type="button"
-              onClick={handleStep2Next}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
+            <button type="button" onClick={handleStep2Next} className={btnPrimary}>
               Next
             </button>
           </div>
@@ -225,7 +253,7 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className={btnSecondary}
             >
               Back
             </button>
@@ -233,7 +261,7 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
               type="button"
               onClick={handleStep3Submit}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+              className={`${btnPrimary} gap-2`}
             >
               {loading ? (
                 <>
@@ -257,22 +285,16 @@ export function CreatePassportForm({ products }: CreatePassportFormProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link
-              href={`/product/passports/${createdPassport.id}`}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
+            <Link href={`/dashboard/product-identity/passports/${createdPassport.id}`} className={linkPrimary}>
               View Passport
             </Link>
             <Link
-              href={`/product/passports/${createdPassport.id}?tab=qr`}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              href={`/dashboard/product-identity/passports/${createdPassport.id}?tab=qr`}
+              className={linkSecondary}
             >
               Download QR
             </Link>
-            <Link
-              href="/product/passports/create"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
+            <Link href={createAnotherHref} className={linkSecondary}>
               Create Another
             </Link>
           </div>

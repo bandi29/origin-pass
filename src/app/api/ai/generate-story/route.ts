@@ -1,8 +1,9 @@
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { getScopedProductIds } from "@/backend/modules/organizations/scope"
+import { isProductInScope } from "@/backend/modules/organizations/scope"
 import { generateProductStoryWithOpenAI } from "@/lib/ai-story"
 import { ensureBrandProfile } from "@/lib/tenancy"
+import { checkStoryRateLimit } from "@/lib/ai-story-rate-limit"
 
 const bodySchema = z.object({
   productId: z.string().uuid(),
@@ -16,6 +17,10 @@ export async function POST(req: Request) {
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  if (!checkStoryRateLimit(user.id).ok) {
+    return Response.json({ error: "Too many requests. Try again later." }, { status: 429 })
   }
 
   await ensureBrandProfile(supabase, user)
@@ -32,8 +37,7 @@ export async function POST(req: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, { status: 400 })
   }
 
-  const scoped = await getScopedProductIds(user.id)
-  if (!scoped.includes(parsed.data.productId)) {
+  if (!(await isProductInScope(user.id, parsed.data.productId))) {
     return Response.json({ error: "Forbidden" }, { status: 403 })
   }
 

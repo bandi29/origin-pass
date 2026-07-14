@@ -1,0 +1,94 @@
+import { NextResponse, type NextRequest } from "next/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
+import { exchangeCodeForTokenGrant, isValidShopDomain, verifyShopifyHmac, buildShopifyEmbeddedAppReturnUrl } from "@/lib/shopify"
+
+export const dynamic = "force-dynamic"
+
+/**
+ * Shopify OAuth callback.
+ *
+ * Flow: validate params → verify HMAC → exchange `code` for an offline access
+ * token → upsert the store row in Supabase (`organizations`, keyed by
+ * `shop_domain`) → redirect back into the embedded app home.
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const params = request.nextUrl.searchParams
+  const shop = params.get("shop")
+  const code = params.get("code")
+  // OAuth `state` carries the embedded admin `host` param we set at authorize time.
+  const host = params.get("state") ?? params.get("host") ?? ""
+
+  // 1. Validate the inputs we control redirects/queries with.
+  if (!isValidShopDomain(shop) || !code) {
+    return NextResponse.json({ error: "Invalid OAuth request." }, { status: 400 })
+  }
+
+  // 2. Confirm the request genuinely came from Shopify.
+  if (!verifyShopifyHmac(params)) {
+    return NextResponse.json({ error: "HMAC validation failed." }, { status: 401 })
+  }
+
+  // 3. Trade the temporary code for the offline token GRANT (Shopify now issues
+  // expiring tokens — access_token + expires_in + refresh_token — and the Admin
+  // API rejects legacy non-expiring tokens).
+  const grant = await exchangeCodeForTokenGrant(shop, code)
+  if (!grant) {
+    return NextResponse.json({ error: "Token exchange failed." }, { status: 502 })
+  }
+
+  const tokenFields = {
+    shopify_access_token: grant.accessToken,
+    shopify_refresh_token: grant.refreshToken,
+    shopify_token_expires_at: grant.expiresAt,
+  }
+
+  // 4. Persist the grant without wiping merchant-entered fallback config.
+  const supabase = createServerSupabaseClient()
+  const { data: existing } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("shop_domain", shop)
+    .maybeSingle()
+
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("organizations")
+      .update({
+        ...tokenFields,
+        name: shop,
+        shopify_install_status: "active",
+        shopify_uninstalled_at: null,
+        shopify_redacted_at: null,
+      })
+      .eq("shop_domain", shop)
+    if (error) {
+      console.error("[shopify/auth/callback] store update failed:", error.message)
+      return NextResponse.json({ error: "Could not persist store." }, { status: 500 })
+    }
+  } else {
+    const { error } = await supabase.from("organizations").insert({
+      shop_domain: shop,
+      ...tokenFields,
+      name: shop,
+      shopify_install_status: "active",
+      global_production_location: null,
+      global_care_instructions: null,
+    })
+    if (error) {
+      console.error("[shopify/auth/callback] store insert failed:", error.message)
+      return NextResponse.json({ error: "Could not persist store." }, { status: 500 })
+    }
+  }
+
+  // 5. Return to embedded Shopify admin (not a bare tunnel URL in the iframe).
+  const embeddedReturn = buildShopifyEmbeddedAppReturnUrl(shop, host)
+  if (embeddedReturn) {
+    return NextResponse.redirect(embeddedReturn)
+  }
+
+  const home = new URL("/api/shopify", request.nextUrl.origin)
+  home.searchParams.set("embedded", "1")
+  home.searchParams.set("shop", shop)
+  if (host) home.searchParams.set("host", host)
+  return NextResponse.redirect(home)
+}

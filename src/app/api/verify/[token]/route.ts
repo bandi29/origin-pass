@@ -3,7 +3,7 @@ import { verifyAndGetResponse } from "@/backend/modules/verification/service"
 import { ok, fail } from "@/backend/api/gateway"
 import { isValidVerifyToken } from "@/lib/verify-token"
 import { isValidSerialId } from "@/lib/security"
-import { checkRateLimit } from "@/lib/rate-limit"
+import { checkRateLimitAsync } from "@/lib/rate-limit"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -14,7 +14,7 @@ export async function GET(
 ) {
   const ctx = await buildRequestContext()
 
-  const { ok: allowed, remaining } = checkRateLimit(ctx.ipAddress)
+  const { ok: allowed, remaining } = await checkRateLimitAsync(ctx.ipAddress)
   if (!allowed) {
     return fail(ctx.traceId, "Too many requests. Try again later.", 429)
   }

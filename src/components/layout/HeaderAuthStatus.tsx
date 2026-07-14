@@ -89,7 +89,7 @@ export default function HeaderAuthStatus() {
               className="block cursor-pointer px-4 py-2 text-slate-700 hover:bg-slate-50"
               onClick={() => setOpen(false)}
             >
-              Edit Profile
+              Dashboard
             </Link>
             <button
               type="button"

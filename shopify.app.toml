@@ -1,0 +1,41 @@
+# OriginPass Shopify app — wired to the existing Next.js routes under /api/shopify/*
+# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "f91b78bdc3c607ebaecbd6eb349a7d3e"
+name = "OriginPass"
+# Production URLs — requires Next.js deployed at this host for the admin sidebar to work.
+# Local dev: run `npm run shopify:dev` (tunnel + dev-store URL override). Do NOT run `npm run dev` separately.
+application_url = "https://originpass.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2024-10"
+
+  [[webhooks.subscriptions]]
+  topics = ["products/create", "products/update", "products/delete", "app_subscriptions/update"]
+  uri = "/api/shopify/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/api/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["shop/redact"]
+  uri = "/api/webhooks/gdpr/shop_redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/redact"]
+  uri = "/api/webhooks/gdpr/customers_redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request"]
+  uri = "/api/webhooks/gdpr/customers_data_request"
+
+[access_scopes]
+scopes = "read_products,write_products"
+
+[auth]
+redirect_urls = ["https://originpass.com/api/shopify/auth/callback"]

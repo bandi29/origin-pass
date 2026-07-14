@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createComplianceProduct } from "@/actions/create-compliance-product"
 import {
   type CategoryKey,
@@ -9,7 +9,11 @@ import {
 } from "@/lib/compliance/category-schemas"
 import { getCategoryComplianceStrategy } from "@/lib/compliance/category-compliance-strategy"
 import type { ComplianceData } from "@/lib/compliance/category-compliance-strategy"
-import { computeDppReadinessScore } from "@/lib/compliance/validate-category-product"
+import {
+  computeDppReadinessScore,
+  getIncompleteGeoFieldKeys,
+  validateCategoryProduct,
+} from "@/lib/compliance/validate-category-product"
 import type { ProductAiMetadata } from "@/lib/compliance/product-ai-metadata"
 import type { ComplianceIngestionResult } from "@/lib/ai-photo-passport"
 import { filterComplianceDataForCategory } from "@/lib/ingestion/compliance-ingestion-schema"
@@ -22,8 +26,21 @@ import {
   ComplianceStrategyFields,
   AI_FILLED_OUTLINE,
 } from "@/components/compliance/dynamic-field-renderer"
+import { StudioNativeSelect } from "@/components/ui/StudioNativeSelect"
 
-export default function CategoryAwareProductForm() {
+type CategoryAwareProductFormProps = {
+  aiPathOnly?: boolean
+  /** After mount (e.g. from passport intercept), open the native file picker for AI upload once. */
+  autoTriggerAiPicker?: boolean
+  /** When set (e.g. Add Product workspace), successful save navigates into the compliance wizard for review instead of staying on this form. */
+  onProductCreated?: (info: { productId: string; dppReadinessScore?: number }) => void
+}
+
+export default function CategoryAwareProductForm({
+  aiPathOnly = false,
+  autoTriggerAiPicker = false,
+  onProductCreated,
+}: CategoryAwareProductFormProps) {
   const [categoryKey, setCategoryKey] = useState<CategoryKey | "">("")
   const [name, setName] = useState("")
   const [sku, setSku] = useState("")
@@ -32,15 +49,31 @@ export default function CategoryAwareProductForm() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<string[]>([])
+  /** After a failed submit, geo field keys that still need coordinates (warm amber nudge). */
+  const [incompleteGeoFieldKeys, setIncompleteGeoFieldKeys] = useState<string[]>([])
   const [aiFilledKeys, setAiFilledKeys] = useState<Set<string>>(() => new Set())
   const [entryMode, setEntryMode] = useState<"ai" | "manual">("ai")
   const [productAiMetadata, setProductAiMetadata] = useState<ProductAiMetadata | null>(null)
 
+  useEffect(() => {
+    if (aiPathOnly) setEntryMode("ai")
+  }, [aiPathOnly])
+
   const [aiUploadBusy, setAiUploadBusy] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [heroImageFileLabel, setHeroImageFileLabel] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const heroFileInputRef = useRef<HTMLInputElement>(null)
   const dragDepth = useRef(0)
+
+  useEffect(() => {
+    if (!autoTriggerAiPicker) return
+    const t = window.setTimeout(() => {
+      fileInputRef.current?.click()
+    }, 350)
+    return () => window.clearTimeout(t)
+  }, [autoTriggerAiPicker])
 
   const strategy = useMemo(() => getCategoryComplianceStrategy(categoryKey), [categoryKey])
   const schema = useMemo(
@@ -81,6 +114,7 @@ export default function CategoryAwareProductForm() {
     setAiFilledKeys(nextFilled)
     setProductAiMetadata(aiMetadata)
     setFieldErrors([])
+    setIncompleteGeoFieldKeys([])
     setMessage(null)
     setAiError(null)
   }
@@ -101,12 +135,14 @@ export default function CategoryAwareProductForm() {
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
+        debugHint?: string
         extraction?: ComplianceIngestionResult
         aiFilledKeys?: string[]
         aiMetadata?: ProductAiMetadata
       }
       if (!res.ok) {
-        throw new Error(json.error || "Request failed")
+        const hint = json.debugHint ? ` — ${json.debugHint}` : ""
+        throw new Error((json.error || "Request failed") + hint)
       }
       if (!json.extraction) {
         throw new Error("Invalid response")
@@ -163,17 +199,42 @@ export default function CategoryAwareProductForm() {
 
   function setField(f: SchemaField, value: unknown) {
     if (!strategy) return
-    setComplianceData((d) => strategy.setFieldValue(d, f, value))
+    const next = strategy.setFieldValue(complianceData, f, value)
+    setComplianceData(next)
     setAiFilledKeys((prev) => {
-      const next = new Set(prev)
-      next.delete(f.key)
-      return next
+      const nextKeys = new Set(prev)
+      nextKeys.delete(f.key)
+      return nextKeys
     })
+    if (f.type === "geo") {
+      const geo = strategy.getFieldValue(next, f) as { lat?: number; lng?: number } | null
+      if (
+        geo &&
+        geo.lat != null &&
+        geo.lng != null &&
+        Number.isFinite(Number(geo.lat)) &&
+        Number.isFinite(Number(geo.lng))
+      ) {
+        setIncompleteGeoFieldKeys((prev) => prev.filter((k) => k !== f.key))
+      }
+    }
   }
 
   function readField(f: SchemaField): unknown {
     if (!strategy) return undefined
     return strategy.getFieldValue(complianceData, f)
+  }
+
+  function heroStatusLine() {
+    if (heroUploading && heroImageFileLabel) {
+      return `${heroImageFileLabel} · Uploading…`
+    }
+    if (heroUploading) return "Uploading…"
+    if (typeof complianceData.hero_image_url === "string" && complianceData.hero_image_url) {
+      return heroImageFileLabel ?? "Image linked"
+    }
+    if (heroImageFileLabel) return heroImageFileLabel
+    return "No file selected"
   }
 
   async function onHeroImage(file: File) {
@@ -183,11 +244,13 @@ export default function CategoryAwareProductForm() {
       const err = validateFile(file)
       if (err) {
         setMessage(err)
+        setHeroImageFileLabel(null)
         return
       }
       const r = await uploadProductImageClient(file, supabase)
       if (!r.success || !r.url) {
         setMessage(r.error ?? "Upload failed")
+        setHeroImageFileLabel(null)
         return
       }
       setComplianceData((d) => ({ ...d, hero_image_url: r.url }))
@@ -201,10 +264,25 @@ export default function CategoryAwareProductForm() {
     e.preventDefault()
     setMessage(null)
     setFieldErrors([])
+    setIncompleteGeoFieldKeys([])
     if (!categoryKey) {
       setMessage("Select a product category or upload a document with AI.")
       return
     }
+
+    const clientValidation = validateCategoryProduct({
+      complianceCategoryKey: categoryKey,
+      name: name.trim(),
+      sku: sku.trim() || null,
+      complianceData,
+    })
+    if (!clientValidation.ok) {
+      setFieldErrors(clientValidation.errors)
+      setIncompleteGeoFieldKeys(getIncompleteGeoFieldKeys(categoryKey, complianceData))
+      setMessage(clientValidation.errors[0] ?? "Please complete required fields.")
+      return
+    }
+
     setLoading(true)
     try {
       const result = await createComplianceProduct({
@@ -216,7 +294,16 @@ export default function CategoryAwareProductForm() {
       })
       if (!result.success) {
         setFieldErrors([result.error ?? "Could not save"])
+        setIncompleteGeoFieldKeys(getIncompleteGeoFieldKeys(categoryKey, complianceData))
         setMessage(result.error ?? "Could not save")
+        return
+      }
+      if (result.productId && onProductCreated) {
+        setIncompleteGeoFieldKeys([])
+        onProductCreated({
+          productId: result.productId,
+          dppReadinessScore: result.dppReadinessScore,
+        })
         return
       }
       setMessage(
@@ -228,6 +315,8 @@ export default function CategoryAwareProductForm() {
       setAiFilledKeys(new Set())
       setProductAiMetadata(null)
       setCategoryKey("")
+      setHeroImageFileLabel(null)
+      setIncompleteGeoFieldKeys([])
     } finally {
       setLoading(false)
     }
@@ -244,176 +333,270 @@ export default function CategoryAwareProductForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-8">
-      <fieldset className="space-y-4 min-w-0">
-        <legend className="text-sm font-medium text-slate-800">How do you want to add product data?</legend>
-        <p className="text-xs text-slate-500 -mt-2">
-          Pick one method. You can switch anytime — selection uses the same form below.
-        </p>
+      {!aiPathOnly ? (
+        <fieldset className="min-w-0 space-y-4">
+          <legend className="text-sm font-medium text-slate-800">How do you want to add product data?</legend>
+          <p className="-mt-2 text-xs text-slate-500">
+            Pick one method. You can switch anytime — selection uses the same form below.
+          </p>
 
-        <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
-          <label
+          <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
+            <label
+              className={clsx(
+                "relative flex cursor-pointer flex-col rounded-2xl border-2 p-4 text-left transition focus-within:ring-2 focus-within:ring-emerald-500/30",
+                entryMode === "ai"
+                  ? "border-emerald-500 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 shadow-md ring-2 ring-emerald-500/15"
+                  : "border-slate-200 bg-slate-50/70 hover:border-emerald-200 hover:bg-white",
+              )}
+            >
+              <input
+                type="radio"
+                name="entry-mode"
+                value="ai"
+                checked={entryMode === "ai"}
+                onChange={() => selectEntryMode("ai")}
+                className="sr-only"
+              />
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                  <Sparkles className="h-5 w-5" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-base font-semibold text-slate-900">Create with AI</span>
+                  <p className="mt-1 text-sm leading-snug text-slate-600">
+                    Upload a photo or PDF — we detect category and DPP-ready fields.
+                  </p>
+                </div>
+              </div>
+            </label>
+
+            <label
+              className={clsx(
+                "relative flex cursor-pointer flex-col rounded-2xl border-2 p-4 text-left transition focus-within:ring-2 focus-within:ring-slate-400/40",
+                entryMode === "manual"
+                  ? "border-slate-800 bg-white shadow-sm ring-1 ring-slate-900/10"
+                  : "border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white",
+              )}
+            >
+              <input
+                type="radio"
+                name="entry-mode"
+                value="manual"
+                checked={entryMode === "manual"}
+                onChange={() => selectEntryMode("manual")}
+                className="sr-only"
+              />
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200/80 text-slate-800">
+                  <ListChecks className="h-5 w-5" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-base font-semibold text-slate-900">Manual entry</span>
+                  <p className="mt-1 text-sm leading-snug text-slate-600">
+                    Choose the compliance category yourself and fill in fields without AI.
+                  </p>
+                  <span className="mt-3 inline-block text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Alternative path
+                  </span>
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Single panel: AI upload OR manual hint */}
+          <div
             className={clsx(
-              "relative flex cursor-pointer flex-col rounded-2xl border-2 p-4 text-left transition focus-within:ring-2 focus-within:ring-emerald-500/30",
+              "relative min-h-[200px] overflow-hidden rounded-2xl border-2 transition",
               entryMode === "ai"
-                ? "border-emerald-500 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 shadow-md ring-2 ring-emerald-500/15"
-                : "border-slate-200 bg-slate-50/70 hover:border-emerald-200 hover:bg-white",
+                ? "border-emerald-400/90 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/30"
+                : "border-slate-200/90 bg-slate-50/40",
             )}
           >
             <input
-              type="radio"
-              name="entry-mode"
-              value="ai"
-              checked={entryMode === "ai"}
-              onChange={() => selectEntryMode("ai")}
+              ref={fileInputRef}
+              data-testid="photo-to-passport-file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              multiple
               className="sr-only"
+              tabIndex={-1}
+              onChange={onFileInputChange}
             />
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-                <Sparkles className="h-5 w-5" aria-hidden />
-              </div>
-              <div className="min-w-0">
-                <span className="text-base font-semibold text-slate-900">Create with AI</span>
-                <p className="mt-1 text-sm text-slate-600 leading-snug">
-                  Upload a photo or PDF — we detect category and DPP-ready fields.
+
+            {entryMode === "ai" ? (
+              <>
+                <div className="flex items-start justify-between gap-3 border-b border-emerald-100/80 bg-emerald-600/[0.06] px-5 py-4">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                      <Sparkles className="h-5 w-5" aria-hidden />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold tracking-tight text-emerald-950">
+                        Upload for AI extraction
+                      </h2>
+                      <p className="mt-0.5 text-xs text-emerald-900/75">
+                        AI will automatically fill relevant compliance fields for you.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {aiUploadBusy ? (
+                  <div className="flex min-h-[180px] flex-col items-center justify-center gap-4 px-6 py-12">
+                    <Loader2 className="h-10 w-10 animate-spin text-emerald-600" aria-hidden />
+                    <p className="text-center text-sm font-medium text-slate-800">
+                      Analyzing document for DPP compliance…
+                    </p>
+                    <p className="max-w-sm text-center text-xs text-slate-500">
+                      Extracting category and product details for your review.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    className={clsx(
+                      "mx-4 mb-4 mt-4 flex min-h-[188px] flex-col rounded-2xl border-2 border-dashed px-4 py-8 transition",
+                      isDragging
+                        ? "border-emerald-500 bg-emerald-100/70"
+                        : "border-emerald-300/70 bg-white/70 hover:border-emerald-400/80 hover:bg-white",
+                    )}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
+                    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+                      <div
+                        className={clsx(
+                          "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-dashed transition",
+                          isDragging
+                            ? "border-emerald-500 bg-emerald-100 text-emerald-700"
+                            : "border-emerald-300/80 bg-white text-emerald-600",
+                        )}
+                        aria-hidden
+                      >
+                        <Upload className="h-7 w-7" />
+                      </div>
+                      <div className="max-w-md space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">
+                          Drop files here or click to upload
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Photo or PDF · images max 4&nbsp;MB · PDF max 8&nbsp;MB · up to 8 files
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        Upload photo or PDF
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {aiError ? (
+                  <p className="border-t border-rose-100 bg-rose-50/80 px-5 py-3 text-sm text-rose-800">
+                    {aiError}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <div className="flex min-h-[160px] flex-col justify-center px-6 py-8">
+                <p className="text-sm font-semibold text-slate-800">Manual entry selected</p>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
+                  Use the <strong>compliance category</strong> dropdown below, then complete product and DPP fields.
+                  To extract data from a file instead, select <strong>Create with AI</strong> above.
                 </p>
               </div>
-            </div>
-          </label>
-
-          <label
-            className={clsx(
-              "relative flex cursor-pointer flex-col rounded-2xl border-2 p-4 text-left transition focus-within:ring-2 focus-within:ring-slate-400/40",
-              entryMode === "manual"
-                ? "border-slate-800 bg-white shadow-sm ring-1 ring-slate-900/10"
-                : "border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white",
             )}
-          >
-            <input
-              type="radio"
-              name="entry-mode"
-              value="manual"
-              checked={entryMode === "manual"}
-              onChange={() => selectEntryMode("manual")}
-              className="sr-only"
-            />
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200/80 text-slate-800">
-                <ListChecks className="h-5 w-5" aria-hidden />
-              </div>
-              <div className="min-w-0">
-                <span className="text-base font-semibold text-slate-900">Manual entry</span>
-                <p className="mt-1 text-sm text-slate-600 leading-snug">
-                  Choose the compliance category yourself and fill in fields without AI.
-                </p>
-                <span className="mt-3 inline-block text-xs font-medium uppercase tracking-wide text-slate-400">
-                  Alternative path
-                </span>
-              </div>
-            </div>
-          </label>
-        </div>
-
-        {/* Single panel: AI upload OR manual hint (no duplicate “manual” copy) */}
-        <div
-          className={clsx(
-            "relative min-h-[200px] overflow-hidden rounded-2xl border-2 transition",
-            entryMode === "ai"
-              ? "border-emerald-400/90 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/30"
-              : "border-slate-200/90 bg-slate-50/40",
-          )}
-        >
+          </div>
+        </fieldset>
+      ) : (
+        <div className="min-w-0 space-y-4">
           <input
             ref={fileInputRef}
             data-testid="photo-to-passport-file"
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
             multiple
-            className="pointer-events-none sr-only"
+            className="sr-only"
             tabIndex={-1}
             onChange={onFileInputChange}
           />
-
-          {entryMode === "ai" ? (
-            <>
-              <div className="flex items-start justify-between gap-3 border-b border-emerald-100/80 bg-emerald-600/[0.06] px-5 py-4">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-                    <Sparkles className="h-5 w-5" aria-hidden />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold tracking-tight text-emerald-950">
-                      Upload for AI extraction
-                    </h2>
-                    <p className="mt-0.5 text-xs text-emerald-900/75">
-                      We map results into compliance_data for your category
-                    </p>
-                  </div>
+          <div
+            className={clsx(
+              "relative min-h-[200px] overflow-hidden rounded-2xl border-2 border-emerald-400/90 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/30 transition",
+            )}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-emerald-100/80 bg-emerald-600/[0.06] px-5 py-4">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                  <Sparkles className="h-5 w-5" aria-hidden />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight text-emerald-950">Upload for AI extraction</h2>
+                  <p className="mt-0.5 text-xs text-emerald-900/75">
+                    AI will automatically fill relevant compliance fields for you.
+                  </p>
                 </div>
               </div>
+            </div>
 
-              {aiUploadBusy ? (
-                <div className="flex min-h-[180px] flex-col items-center justify-center gap-4 px-6 py-12">
-                  <Loader2 className="h-10 w-10 animate-spin text-emerald-600" aria-hidden />
-                  <p className="text-center text-sm font-medium text-slate-800">
-                    Analyzing document for DPP compliance…
-                  </p>
-                  <p className="max-w-sm text-center text-xs text-slate-500">
-                    Extracting category, product cues, and compliance_data for your review.
-                  </p>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`group flex min-h-[180px] w-full flex-col items-center justify-center gap-3 px-6 py-10 text-center transition ${
-                    isDragging
-                      ? "bg-emerald-100/80"
-                      : "bg-transparent hover:bg-emerald-50/50 active:bg-emerald-50"
-                  }`}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragEnter={handleDragEnter}
-                  onDragLeave={handleDragLeave}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                >
+            {aiUploadBusy ? (
+              <div className="flex min-h-[180px] flex-col items-center justify-center gap-4 px-6 py-12">
+                <Loader2 className="h-10 w-10 animate-spin text-emerald-600" aria-hidden />
+                <p className="text-center text-sm font-medium text-slate-800">Analyzing document for DPP compliance…</p>
+                <p className="max-w-sm text-center text-xs text-slate-500">
+                  Extracting category and product details for your review.
+                </p>
+              </div>
+            ) : (
+              <div
+                className={clsx(
+                  "mx-4 mb-4 mt-4 flex min-h-[188px] flex-col rounded-2xl border-2 border-dashed px-4 py-8 transition",
+                  isDragging
+                    ? "border-emerald-500 bg-emerald-100/70"
+                    : "border-emerald-300/70 bg-white/70 hover:border-emerald-400/80 hover:bg-white",
+                )}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
                   <div
-                    className={`flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed transition ${
+                    className={clsx(
+                      "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-dashed transition",
                       isDragging
                         ? "border-emerald-500 bg-emerald-100 text-emerald-700"
-                        : "border-emerald-300/80 bg-white text-emerald-600 group-hover:border-emerald-400"
-                    }`}
+                        : "border-emerald-300/80 bg-white text-emerald-600",
+                    )}
+                    aria-hidden
                   >
-                    <Upload className="h-7 w-7" aria-hidden />
+                    <Upload className="h-7 w-7" />
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      Drop files here or click to upload
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
+                  <div className="max-w-md space-y-1">
+                    <p className="text-sm font-semibold text-slate-900">Drop files here or click to upload</p>
+                    <p className="text-xs text-slate-500">
                       Photo or PDF · images max 4&nbsp;MB · PDF max 8&nbsp;MB · up to 8 files
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm group-hover:bg-emerald-700">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     Upload photo or PDF
-                  </span>
-                </button>
-              )}
-              {aiError ? (
-                <p className="border-t border-rose-100 bg-rose-50/80 px-5 py-3 text-sm text-rose-800">
-                  {aiError}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <div className="flex min-h-[160px] flex-col justify-center px-6 py-8">
-              <p className="text-sm font-semibold text-slate-800">Manual entry selected</p>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
-                Use the <strong>compliance category</strong> dropdown below, then complete product and DPP fields.
-                To extract data from a file instead, select <strong>Create with AI</strong> above.
-              </p>
-            </div>
-          )}
+                  </button>
+                </div>
+              </div>
+            )}
+            {aiError ? (
+              <p className="border-t border-rose-100 bg-rose-50/80 px-5 py-3 text-sm text-rose-800">{aiError}</p>
+            ) : null}
+          </div>
         </div>
-      </fieldset>
+      )}
 
       {productAiMetadata?.source_files?.length ? (
         <p className="text-xs text-slate-600 rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2">
@@ -430,7 +613,7 @@ export default function CategoryAwareProductForm() {
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Compliance category *
               </label>
-              <select
+              <StudioNativeSelect
                 value={categoryKey}
                 onChange={(e) => {
                   const v = e.target.value as CategoryKey | ""
@@ -439,8 +622,9 @@ export default function CategoryAwareProductForm() {
                   setAiFilledKeys(new Set())
                   setProductAiMetadata(null)
                   setFieldErrors([])
+                  setIncompleteGeoFieldKeys([])
+                  setHeroImageFileLabel(null)
                 }}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 required={showCategoryStep}
                 aria-describedby="compliance-category-hint"
               >
@@ -449,7 +633,7 @@ export default function CategoryAwareProductForm() {
                 <option value="textile">Textile (ESPR)</option>
                 <option value="wood">Wood / furniture (EUDR)</option>
                 <option value="jewelry">Jewelry (due diligence)</option>
-              </select>
+              </StudioNativeSelect>
               <p id="compliance-category-hint" className="mt-2 text-xs leading-relaxed text-slate-500">
                 Form fields update automatically based on the selected category to meet EU regulatory standards.
               </p>
@@ -512,25 +696,54 @@ export default function CategoryAwareProductForm() {
             />
           </div>
 
-          <div className="rounded-lg border border-slate-100 p-4 space-y-2">
-            <p className="text-sm font-medium text-slate-800">Hero image</p>
-            <p className="text-xs text-slate-500">Stored in compliance_data.hero_image_url</p>
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div>
+              <p className="text-sm font-medium text-slate-800">Hero image</p>
+              <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                This image will be the primary visual for your Digital Product Passport.
+              </p>
+            </div>
+            <div className="space-y-2">
               <input
+                ref={heroFileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
+                className="sr-only"
+                tabIndex={-1}
                 disabled={heroUploading}
+                aria-label="Choose hero image file"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  if (f) void onHeroImage(f)
+                  if (f) {
+                    setHeroImageFileLabel(f.name)
+                    void onHeroImage(f)
+                  }
                   e.target.value = ""
                 }}
-                className="text-sm"
               />
-              {heroUploading ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : null}
+              <div className="flex min-h-[42px] flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+                <button
+                  type="button"
+                  disabled={heroUploading}
+                  onClick={() => heroFileInputRef.current?.click()}
+                  className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Upload className="h-4 w-4 shrink-0 text-slate-600" aria-hidden />
+                  {typeof complianceData.hero_image_url === "string" && complianceData.hero_image_url
+                    ? "Replace image"
+                    : "Choose image"}
+                </button>
+                <span
+                  className="min-w-0 flex-1 truncate text-sm text-slate-600"
+                  title={heroImageFileLabel ?? undefined}
+                >
+                  {heroStatusLine()}
+                </span>
+                {heroUploading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-600" aria-hidden /> : null}
+              </div>
             </div>
             {typeof complianceData.hero_image_url === "string" && complianceData.hero_image_url ? (
-              <p className="text-xs text-emerald-700 truncate">Linked: {complianceData.hero_image_url}</p>
+              <p className="text-xs text-emerald-700">Uploaded and ready for your passport.</p>
             ) : null}
           </div>
 
@@ -541,6 +754,7 @@ export default function CategoryAwareProductForm() {
               readField={readField}
               setField={setField}
               aiFilledKeys={aiFilledKeys}
+              incompleteGeoFieldKeys={incompleteGeoFieldKeys}
             />
           ) : null}
         </>
@@ -565,10 +779,10 @@ export default function CategoryAwareProductForm() {
         <button
           type="submit"
           disabled={loading || !categoryKey}
-          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-900 text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          Save product
+          {onProductCreated ? "Save & review in wizard" : "Save product"}
         </button>
       ) : null}
     </form>

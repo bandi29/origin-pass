@@ -1,4 +1,5 @@
 import { requireOpenAI } from "@/lib/openai-client"
+import { callUpstream } from "@/lib/resilience"
 import {
   COMPLIANCE_INGESTION_SYSTEM_PROMPT,
   complianceIngestionSchema,
@@ -19,28 +20,37 @@ export async function extractPassportFieldsWithOpenAI(params: {
   const openai = requireOpenAI()
   const dataUrl = `data:${params.mimeType};base64,${params.base64}`
 
-  const completion = await openai.chat.completions.create({
-    model: OPENAI_VISION_MODEL,
-    temperature: 0.2,
-    max_tokens: 1600,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: COMPLIANCE_INGESTION_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "OriginPass Compliance Engine: classify LEATHER/TEXTILE/WOOD/JEWELRY (lowercase keys in output), extract fields, return strict JSON only.",
-          },
-          {
-            type: "image_url",
-            image_url: { url: dataUrl, detail: "high" },
-          },
-        ],
-      },
-    ],
-  })
+  // Vision calls are slower (~5–15s) than text. Higher timeout, same retry shape.
+  const completion = await callUpstream(
+    "openai",
+    (signal) =>
+      openai.chat.completions.create(
+        {
+          model: OPENAI_VISION_MODEL,
+          temperature: 0.2,
+          max_tokens: 1600,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: COMPLIANCE_INGESTION_SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "OriginPass Compliance Engine: classify LEATHER/TEXTILE/WOOD/JEWELRY (lowercase keys in output), extract fields, return strict JSON only.",
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: dataUrl, detail: "high" },
+                },
+              ],
+            },
+          ],
+        },
+        { signal },
+      ),
+    { timeoutMs: 25_000, attempts: 2 },
+  )
 
   const raw = completion.choices[0]?.message?.content?.trim()
   if (!raw) throw new Error("Empty response from vision model")

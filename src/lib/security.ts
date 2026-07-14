@@ -45,6 +45,7 @@ export function sanitizeFilename(value: string): string {
 
 /**
  * Validates that a URL is safe for img src (https only, no javascript:, data:, etc.).
+ * In production, only https:// is allowed; http:// is permitted in development for localhost.
  */
 export function isSafeImageUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== "string") return false
@@ -52,7 +53,9 @@ export function isSafeImageUrl(url: string | null | undefined): boolean {
   if (trimmed.length === 0) return false
   try {
     const parsed = new URL(trimmed)
-    return parsed.protocol === "https:" || parsed.protocol === "http:"
+    if (parsed.protocol === "https:") return true
+    if (parsed.protocol === "http:" && process.env.NODE_ENV !== "production") return true
+    return false
   } catch {
     return false
   }

@@ -1,4 +1,11 @@
 {
+    "Breadcrumbs": {
+        "dashboard": "Dashboard",
+        "product_identity": "Identità prodotto",
+        "print_labels": "Stampa etichette",
+        "verification": "Verifica",
+        "alerts": "Avvisi"
+    },
     "Verification": {
         "title": "Certificato di Autenticità",
         "scanResult": "Risultato scansione",
@@ -29,6 +36,8 @@
         "scanTip": "Tieni aperta questa pagina per rivendita o garanzia.",
         "unknown": "Sconosciuto",
         "home": "Home",
+        "breadcrumbProduct": "Prodotto",
+        "breadcrumbPassports": "Passaporti",
         "breadcrumbVerify": "Verifica",
         "productImage": "Immagine del Prodotto",
         "footer": {

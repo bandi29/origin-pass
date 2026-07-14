@@ -1,0 +1,38 @@
+{
+  "testCaseId": "leather-eudr-case-1",
+  "title": "Leather — EUDR & tanning logic",
+  "description": "Static fixture for extraction / compliance validation against invoice + DPP metadata.",
+  "targetFields": {
+    "complianceCategory": "Leather",
+    "primaryMaterial": "Vegetable-Tanned Full-Grain Bovine Leather",
+    "eudrDueDiligenceStatement": "DDS-ITA-2026-X884",
+    "originGeo": {
+      "latitude": 43.7696,
+      "longitude": 11.2558
+    },
+    "rawMaterialOriginLabel": "Italy (Tuscany Region)"
+  },
+  "invoice": {
+    "number": "LT-8822",
+    "vendor": "Florentine Hide & Grain S.p.A.",
+    "dateIso": "2026-04-10",
+    "dateDisplay": "April 10, 2026"
+  },
+  "product": {
+    "materialDescription": "Vegetable-Tanned Full-Grain Bovine Leather",
+    "quantity": "120 sq. ft.",
+    "batchId": "B-9932-ITA"
+  },
+  "complianceMetadata": {
+    "tanningMethod": "Chrome-free, Vegetable extracts",
+    "lwgCertification": {
+      "grade": "Gold Grade",
+      "reference": "LWG-552"
+    }
+  },
+  "staticAssets": {
+    "pdfRelativeUrl": "/test-fixtures/validation/leather-eudr-case-1.pdf",
+    "plainTextRelativeUrl": "/test-fixtures/validation/leather-eudr-case-1.txt",
+    "manifestRelativeUrl": "/test-fixtures/validation/leather-eudr-case-1.manifest.json"
+  }
+}

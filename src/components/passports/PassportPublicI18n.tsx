@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useState } from "react"
+import { clsx } from "clsx"
 import { Loader2 } from "lucide-react"
 import { PassportSharePanel } from "@/components/passports/PassportSharePanel"
 
@@ -23,6 +24,9 @@ type Props = {
   structuredMaterials: Material[] | null
   legacyMaterialsText: string | null
   timelineSteps: TimelineStep[] | null
+  /** Dashboard template preview: share actions are sandboxed. */
+  sharePreview?: boolean
+  themeVariant?: "classic" | "luxury"
 }
 
 export function PassportPublicI18n({
@@ -34,7 +38,10 @@ export function PassportPublicI18n({
   structuredMaterials,
   legacyMaterialsText,
   timelineSteps,
+  sharePreview = false,
+  themeVariant = "classic",
 }: Props) {
+  const isLuxury = themeVariant === "luxury"
   const [lang, setLang] = useState<string>("en")
   const [story, setStory] = useState<string | null>(initialStory)
   const [materials, setMaterials] = useState<Material[] | null>(structuredMaterials)
@@ -110,13 +117,30 @@ export function PassportPublicI18n({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+      <div
+        className={clsx(
+          "flex flex-wrap items-center justify-between gap-2 rounded-2xl px-3 py-2",
+          isLuxury
+            ? "border border-amber-200/15 bg-slate-950/30"
+            : "border border-ds-border bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950",
+        )}
+      >
+        <span
+          className={clsx(
+            "text-xs font-semibold uppercase tracking-widest",
+            isLuxury ? "text-amber-200/60" : "text-slate-400",
+          )}
+        >
           Passport language
         </span>
         <div className="flex items-center gap-2">
           <select
-            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-800"
+            className={clsx(
+              "rounded-lg border px-2 py-1.5 text-sm",
+              isLuxury
+                ? "border-amber-200/20 bg-slate-900 text-amber-50"
+                : "border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
+            )}
             value={lang}
             disabled={loading}
             onChange={(e) => void onChangeLang(e.target.value)}
@@ -138,19 +162,56 @@ export function PassportPublicI18n({
         </div>
       ) : null}
 
-      <PassportSharePanel passportId={passportId} productName={productName} />
+      <PassportSharePanel
+        passportId={passportId}
+        productName={productName}
+        mode={sharePreview ? "preview" : "live"}
+      />
 
-      <div className="space-y-2 rounded-3xl border border-slate-100 bg-white p-5 text-sm text-slate-600 shadow-sm">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Story</h2>
-        <p>{storyDisplay}</p>
-      </div>
+      <figure
+        className={clsx(
+          "border-y py-8",
+          isLuxury ? "border-amber-200/15" : "border-ds-border dark:border-slate-700/60",
+        )}
+      >
+        <figcaption
+          className={clsx(
+            "mb-4 text-xs font-semibold uppercase tracking-widest",
+            isLuxury ? "text-amber-200/60" : "text-slate-500 dark:text-slate-400",
+          )}
+        >
+          Story
+        </figcaption>
+        <blockquote
+          className={clsx(
+            "font-serif text-lg italic leading-relaxed",
+            isLuxury ? "text-slate-300" : "text-slate-700 dark:text-slate-300",
+          )}
+        >
+          {storyDisplay}
+        </blockquote>
+      </figure>
 
       {matList.length > 0 ? (
-        <div className="space-y-3 rounded-3xl border border-slate-100 bg-white p-5 text-sm text-slate-600 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Materials</h2>
+        <div
+          className={clsx(
+            "space-y-3 p-5 text-sm",
+            isLuxury
+              ? "rounded-3xl border border-amber-200/15 text-slate-300"
+              : "rounded-3xl border border-ds-border bg-white text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300",
+          )}
+        >
+          <h2
+            className={clsx(
+              "text-xs font-semibold uppercase tracking-widest",
+              isLuxury ? "text-amber-200/60" : "text-slate-400",
+            )}
+          >
+            Materials
+          </h2>
           <ul className="space-y-2">
             {matList.map((m, i) => (
-              <li key={i} className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+              <li key={i} className="rounded-xl border border-ds-border bg-canvas px-3 py-2">
                 <span className="font-medium text-slate-900">{m.name ?? "—"}</span>
                 {m.source ? <span className="text-slate-500"> — {m.source}</span> : null}
                 {m.sustainabilityTag ? (
@@ -161,15 +222,43 @@ export function PassportPublicI18n({
           </ul>
         </div>
       ) : legacyMat && lang === "en" ? (
-        <div className="space-y-2 rounded-3xl border border-slate-100 bg-white p-5 text-sm text-slate-600 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Materials</h2>
+        <div
+          className={clsx(
+            "space-y-2 p-5 text-sm",
+            isLuxury
+              ? "rounded-3xl border border-amber-200/15 text-slate-300"
+              : "rounded-3xl border border-ds-border bg-white text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300",
+          )}
+        >
+          <h2
+            className={clsx(
+              "text-xs font-semibold uppercase tracking-widest",
+              isLuxury ? "text-amber-200/60" : "text-slate-400",
+            )}
+          >
+            Materials
+          </h2>
           <p>{legacyMat}</p>
         </div>
       ) : null}
 
       {timeList.length > 0 ? (
-        <div className="space-y-3 rounded-3xl border border-slate-100 bg-white p-5 text-sm text-slate-600 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Timeline</h2>
+        <div
+          className={clsx(
+            "space-y-3 p-5 text-sm",
+            isLuxury
+              ? "rounded-3xl border border-amber-200/15 text-slate-300"
+              : "rounded-3xl border border-ds-border bg-white text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300",
+          )}
+        >
+          <h2
+            className={clsx(
+              "text-xs font-semibold uppercase tracking-widest",
+              isLuxury ? "text-amber-200/60" : "text-slate-400",
+            )}
+          >
+            Timeline
+          </h2>
           <ol className="space-y-3 border-l border-emerald-200 pl-4">
             {timeList.map((t, i) => (
               <li key={i} className="relative">

@@ -1,7 +1,9 @@
-import { spacing } from "@/design-system/tokens"
+import { spacing, typography } from "@/design-system/tokens"
 import { MapPin } from "lucide-react"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { FadeIn } from "@/components/layout/FadeIn"
+import { Card } from "@/components/ui/Card"
+import { IconChip } from "@/components/ui/IconChip"
 
 export default function AnalyticsLocationsPage() {
   return (
@@ -11,17 +13,19 @@ export default function AnalyticsLocationsPage() {
         description="Geographic distribution of scans."
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3">
-          <MapPin className="h-8 w-8 text-slate-600" />
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Locations</h2>
-            <p className="text-sm text-slate-500">
+      <Card>
+        <div className="flex items-start gap-4">
+          <IconChip tone="emerald" size="lg">
+            <MapPin />
+          </IconChip>
+          <div className="min-w-0 flex-1">
+            <h2 className={typography.h2}>Locations</h2>
+            <p className="mt-1 text-sm leading-relaxed text-ds-text-muted">
               Where your products are being scanned by country and region.
             </p>
           </div>
         </div>
-      </div>
+      </Card>
     </FadeIn>
   )
 }

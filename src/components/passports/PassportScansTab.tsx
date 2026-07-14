@@ -1,3 +1,5 @@
+import { Activity } from "lucide-react"
+
 type PassportScansTabProps = {
   scans: Array<{
     id: string
@@ -12,10 +14,17 @@ type PassportScansTabProps = {
 export function PassportScansTab({ scans }: PassportScansTabProps) {
   if (scans.length === 0) {
     return (
-      <div className="py-12 text-center">
-        <p className="text-slate-500">No scans yet.</p>
-        <p className="mt-1 text-sm text-slate-400">
-          Scan activity will appear here when customers verify this passport.
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-6 py-12 text-center">
+        <div className="rounded-full border border-slate-200 bg-white p-3 text-slate-500">
+          <Activity className="h-6 w-6" aria-hidden />
+        </div>
+        <h3 className="mt-4 text-base font-semibold text-slate-900">
+          Waiting for your first scan
+        </h3>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
+          Once your physical QR identity labels are printed and scanned out in the wild,
+          interactive telemetry, geographic signals, and device data maps will automatically
+          populate this tab context.
         </p>
       </div>
     )

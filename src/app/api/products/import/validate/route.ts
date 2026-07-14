@@ -2,6 +2,7 @@ import type { ColumnMapping } from "@/lib/import-products/types"
 import { REQUIRED_IMPORT_FIELDS } from "@/lib/import-products/types"
 import { isMappingComplete } from "@/lib/import-products/mapping"
 import { loadExistingSkuSet, validateMappedRowsFromJobFile } from "@/lib/import-products/validate-job-file"
+import { materialiseImportFileToLocal } from "@/lib/import-products/storage"
 import { createClient } from "@/lib/supabase/server"
 import { ensureBrandProfile } from "@/lib/tenancy"
 
@@ -61,7 +62,13 @@ export async function POST(req: Request) {
     }
 
     const existingSkus = await loadExistingSkuSet(user.id)
-    const result = await validateMappedRowsFromJobFile(job.file_url, job.file_name, mapping, existingSkus)
+    const materialised = await materialiseImportFileToLocal(job.file_url, job.file_name)
+    let result
+    try {
+      result = await validateMappedRowsFromJobFile(materialised.localPath, job.file_name, mapping, existingSkus)
+    } finally {
+      await materialised.cleanup()
+    }
 
     return Response.json({
       ok: result.failedRows === 0,

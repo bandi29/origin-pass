@@ -10,12 +10,14 @@ import {
 import { Button } from "@/components/ui/Button"
 import { Card } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
+import { IconChip } from "@/components/ui/IconChip"
 import { createPortal } from "react-dom"
 import {
   AlertTriangle,
   CheckCircle2,
   Flag,
   MapPin,
+  ShieldCheck,
   X,
 } from "lucide-react"
 import clsx from "clsx"
@@ -286,18 +288,19 @@ export function AuthenticityAlertsClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/50 p-4">
-        <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" aria-hidden />
-        <p className="text-sm text-amber-950/90">
+      {/* Triage hint banner — uses an IconChip for the leading icon so the
+          warning palette is consistent with other inline notices in the app. */}
+      <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-4">
+        <IconChip tone="amber" size="sm">
+          <AlertTriangle />
+        </IconChip>
+        <p className="text-sm leading-relaxed text-amber-950/90">
           Non-valid scans from your passports in the last 90 days. Resolve or flag items to
           triage your risk queue (status updates are local until persisted).
         </p>
       </div>
 
-      <Card
-        padding
-        className="rounded-2xl border border-ds-border bg-white shadow-sm"
-      >
+      <Card>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] text-left text-sm">
             <thead>
@@ -314,18 +317,24 @@ export function AuthenticityAlertsClient({
             <tbody className="divide-y divide-ds-border">
               {alerts.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="py-8 text-center text-sm text-ds-text-muted"
-                  >
-                    No suspicious or failed scans in the last 90 days.
+                  <td colSpan={7} className="py-10">
+                    <div className="mx-auto flex max-w-sm flex-col items-center gap-3 text-center">
+                      <IconChip tone="emerald" size="lg">
+                        <ShieldCheck />
+                      </IconChip>
+                      <p className="text-sm font-medium text-ds-text">All clear</p>
+                      <p className="text-xs leading-relaxed text-ds-text-muted">
+                        No suspicious or failed scans in the last 90 days. New alerts will appear here as
+                        soon as fraud signals are detected.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : null}
               {alerts.map((row) => (
                 <tr
                   key={row.alert_id}
-                  className="cursor-pointer transition-colors hover:bg-[#F9FAFB]"
+                  className="cursor-pointer transition-colors hover:bg-canvas"
                   onClick={() => openAlert(row)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {

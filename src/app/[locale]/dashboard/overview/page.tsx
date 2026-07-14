@@ -2,7 +2,7 @@
 
 import { spacing } from "@/design-system/tokens"
 import { Link } from "@/i18n/navigation"
-import { Package, ShieldCheck, QrCode, BarChart3 } from "lucide-react"
+import { Package, QrCode, BarChart3 } from "lucide-react"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Card } from "@/components/ui/Card"
 import { DataTable } from "@/components/ui/DataTable"
@@ -18,16 +18,10 @@ const quickLinks = [
     body: "Manage your product catalog",
   },
   {
-    href: "/dashboard/authenticity",
-    icon: ShieldCheck,
-    title: "Authenticity",
-    body: "Verification and trust",
-  },
-  {
-    href: "/product/qr-identity",
+    href: "/dashboard/qr-identity",
     icon: QrCode,
-    title: "QR identity",
-    body: "Passports and QR codes",
+    title: "QR Identity",
+    body: "Generate, print, and manage QR codes",
   },
   {
     href: "/analytics",

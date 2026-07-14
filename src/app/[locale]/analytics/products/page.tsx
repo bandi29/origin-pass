@@ -1,11 +1,10 @@
-import { spacing } from "@/design-system/tokens"
-import { Link } from "@/i18n/navigation"
+import { spacing, typography } from "@/design-system/tokens"
 import { Package } from "lucide-react"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { FadeIn } from "@/components/layout/FadeIn"
-
-const outlineBtn =
-  "inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+import { Card } from "@/components/ui/Card"
+import { Button } from "@/components/ui/Button"
+import { IconChip } from "@/components/ui/IconChip"
 
 export default function AnalyticsProductsPage() {
   return (
@@ -14,23 +13,25 @@ export default function AnalyticsProductsPage() {
         title="Product analytics"
         description="Performance metrics by product."
         actions={
-          <Link href="/dashboard/products" className={outlineBtn}>
+          <Button href="/dashboard/products" variant="secondary" size="sm">
             View products
-          </Link>
+          </Button>
         }
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Package className="h-8 w-8 text-slate-600" />
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Products</h2>
-            <p className="text-sm text-slate-500">
+      <Card>
+        <div className="flex items-start gap-4">
+          <IconChip tone="violet" size="lg">
+            <Package />
+          </IconChip>
+          <div className="min-w-0 flex-1">
+            <h2 className={typography.h2}>Products</h2>
+            <p className="mt-1 text-sm leading-relaxed text-ds-text-muted">
               Scan volume, verification rates, and engagement by product.
             </p>
           </div>
         </div>
-      </div>
+      </Card>
     </FadeIn>
   )
 }

@@ -66,7 +66,9 @@ describe("createProduct", () => {
     insertedPayloads.length = 0
     mockGetUser.mockResolvedValue({ data: { user: { id: "user-123" } } })
     mockProfilesSingle.mockResolvedValue({ data: { brand_name: "Test Brand" }, error: null })
-    vi.mocked(ensureBrandProfile).mockResolvedValue(undefined)
+    vi.mocked(ensureBrandProfile).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof ensureBrandProfile>>,
+    )
   })
 
   it("returns unauthorized when user is missing", async () => {

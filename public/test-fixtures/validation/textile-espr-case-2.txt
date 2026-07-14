@@ -1,0 +1,27 @@
+Test Case 2: Textile (Tests ESPR & Fiber Logic)
+
+Target Fields: Compliance category (Textile), Material %, Recycled Content, Wash Care.
+
+CERTIFICATE OF ORIGIN: #TEX-4411
+Supplier: GreenWeave Textiles Ltd.
+Date: March 22, 2026
+
+Technical Specifications:
+
+Article: Organic Cotton Canvas (Heavyweight)
+
+Composition: 100% GOTS Certified Organic Cotton
+
+Dyeing: Low-impact, REACH compliant non-toxic pigments
+
+Sustainability & Lifecycle:
+
+Recycled Content: 0% (Virgin Organic)
+
+Expected Lifespan: 10+ years (Heavy-duty grade)
+
+Repairability Index: High (Standard stitching)
+
+Country of Origin: Portugal
+
+Factory Code: P-LIS-992

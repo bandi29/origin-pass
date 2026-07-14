@@ -10,7 +10,18 @@ import {
   applyMapping,
   validateMappedRows,
 } from "@/lib/import-products/validate"
+import { sheetToStringRecordRows } from "@/lib/import-products/xlsx-smart"
 import { mappedRowsToMergeJson } from "@/lib/import-products/build-merge-json"
+import { materialiseImportFileToLocal } from "@/lib/import-products/storage"
+import {
+  persistVerificationOutputs,
+  runVerificationOrchestrator,
+} from "@/backend/modules/verification-engine"
+import {
+  persistPipelineState,
+  runImportCatalogPipeline,
+  type ImportPipelineState,
+} from "@/lib/import-products/import-catalog-pipeline"
 
 const CHUNK_ROWS = 400
 const RPC_BATCH = 120
@@ -89,20 +100,11 @@ async function* iterateRowsFromFile(
     const sheetName = wb.SheetNames[0]
     if (!sheetName) return
     const sheet = wb.Sheets[sheetName]
-    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
-    if (!json.length) return
-    const headers = Object.keys(json[0]!).map((k) => k.trim()).filter(Boolean)
+    const { headers, rows } = sheetToStringRecordRows(sheet)
+    if (!headers.length || !rows.length) return
     let idx = 0
-    for (const raw of json) {
+    for (const row of rows) {
       idx++
-      const row: Record<string, string> = {}
-      for (const h of headers) {
-        const v = raw[h]
-        if (v == null) row[h] = ""
-        else if (typeof v === "number" || typeof v === "boolean") row[h] = String(v)
-        else if (v instanceof Date) row[h] = v.toISOString().slice(0, 10)
-        else row[h] = String(v).trim()
-      }
       yield { row, rowNumber: idx }
     }
     return
@@ -227,6 +229,64 @@ async function processChunk(
   return { success, failed }
 }
 
+async function runPostImportVerification(job: JobRow): Promise<void> {
+  const admin = createAdminClient()
+  if (!job.product_import_log_id) return
+
+  const { data: importedProducts } = await admin
+    .from("products")
+    .select("id, sku, serial_number, origin_country, supplier_id, risk_score")
+    .eq("import_log_id", job.product_import_log_id)
+    .order("created_at", { ascending: false })
+    .limit(250)
+
+  for (const row of importedProducts ?? []) {
+    const product = row as {
+      id: string
+      sku: string | null
+      serial_number: string | null
+      origin_country: string | null
+      supplier_id: string | null
+      risk_score: number | null
+    }
+    const orchestrator = await runVerificationOrchestrator(
+      {
+        supabase: admin,
+        organizationId: job.organization_id ?? null,
+        actor: job.user_id,
+      },
+      {
+        currentRiskScore: Number(product.risk_score ?? 0),
+        product: {
+          productId: product.id,
+          sku: product.sku,
+          serialNumber: product.serial_number,
+          originCountry: product.origin_country,
+          supplierId: product.supplier_id,
+        },
+      },
+    )
+
+    await persistVerificationOutputs(
+      {
+        supabase: admin,
+        organizationId: job.organization_id ?? null,
+        actor: job.user_id,
+      },
+      product.id,
+      orchestrator,
+    )
+
+    await admin
+      .from("products")
+      .update({
+        risk_score: orchestrator.riskAfter,
+        verification_status: orchestrator.status,
+      })
+      .eq("id", product.id)
+  }
+}
+
 export async function processImportJob(jobId: string): Promise<void> {
   const job = await loadJob(jobId)
   if (!job) {
@@ -259,10 +319,16 @@ export async function processImportJob(jobId: string): Promise<void> {
     orgId = await getOrganizationIdAdmin(job.user_id)
   }
 
+  /** Profile / brand tenant: must match RLS (`brand_id = auth.uid()`) for catalog visibility. */
+  const tenantBrandId = job.brand_id?.trim() || job.user_id
+  if (tenantBrandId !== job.brand_id) {
+    await patchJob(jobId, { brand_id: tenantBrandId })
+  }
+
   const { data: logRow, error: logErr } = await admin
     .from("product_import_logs")
     .insert({
-      brand_id: job.brand_id,
+      brand_id: tenantBrandId,
       organization_id: orgId,
       file_name: job.file_name,
       total_rows: 0,
@@ -291,11 +357,12 @@ export async function processImportJob(jobId: string): Promise<void> {
 
   const jobWithLog: JobRow = {
     ...job,
+    brand_id: tenantBrandId,
     organization_id: orgId,
     product_import_log_id: importLogId,
   }
 
-  const { data: existing } = await admin.from("products").select("sku").eq("brand_id", job.brand_id)
+  const { data: existing } = await admin.from("products").select("sku").eq("brand_id", tenantBrandId)
   const existingSkus = new Set<string>()
   for (const p of existing ?? []) {
     const s = p.sku
@@ -307,7 +374,8 @@ export async function processImportJob(jobId: string): Promise<void> {
   let failureCount = 0
   let totalRows = 0
 
-  const absPath = job.file_url
+  const materialised = await materialiseImportFileToLocal(job.file_url, job.file_name)
+  const absPath = materialised.localPath
 
   try {
     let buffer: { raw: Record<string, string>; rowNumber: number }[] = []
@@ -363,8 +431,39 @@ export async function processImportJob(jobId: string): Promise<void> {
       failure_count: failureCount,
     })
 
+    let pipelineState: ImportPipelineState | null = null
+    if (successCount > 0) {
+      const initialPipeline: ImportPipelineState = {
+        stage: "catalog",
+        productsTotal: successCount,
+        productsDone: successCount,
+        passportsDone: 0,
+        qrDone: 0,
+        passportIds: [],
+        exportRows: [],
+        exportReady: false,
+      }
+      await persistPipelineState(admin, importLogId, mapping, initialPipeline)
+
+      pipelineState = await runImportCatalogPipeline({
+        admin,
+        importLogId,
+        organizationId: orgId,
+        columnMapping: mapping,
+        initialState: initialPipeline,
+        onProgress: async (pipeline) => {
+          pipelineState = pipeline
+          await persistPipelineState(admin, importLogId, mapping, pipeline)
+        },
+      })
+    }
+
     const finalStatus =
-      successCount === 0 ? "FAILED" : failureCount > 0 ? "PARTIAL_SUCCESS" : "COMPLETED"
+      successCount === 0
+        ? "FAILED"
+        : failureCount > 0 || (pipelineState && pipelineState.qrDone < pipelineState.passportsDone)
+          ? "PARTIAL_SUCCESS"
+          : "COMPLETED"
 
     await patchJob(jobId, { status: finalStatus })
 
@@ -378,6 +477,8 @@ export async function processImportJob(jobId: string): Promise<void> {
           finalStatus === "FAILED" ? "failed" : finalStatus === "PARTIAL_SUCCESS" ? "partial" : "completed",
       })
       .eq("id", importLogId)
+
+    await runPostImportVerification(jobWithLog)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     await patchJob(jobId, {
@@ -388,5 +489,7 @@ export async function processImportJob(jobId: string): Promise<void> {
       .from("product_import_logs")
       .update({ status: "failed" })
       .eq("id", importLogId)
+  } finally {
+    await materialised.cleanup()
   }
 }

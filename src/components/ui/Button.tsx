@@ -11,12 +11,21 @@ const variants = {
    * any layer ordering; single-node links avoid nested span quirks.
    */
   primary:
-    "!border !border-transparent !bg-primary !text-white shadow-sm hover:!bg-[#1e293b] hover:shadow-md focus-visible:ring-2 focus-visible:ring-secondary/40 [&_svg]:!text-white",
+    "!border !border-transparent !bg-primary !text-white shadow-sm hover:!bg-[#081636] hover:shadow-md focus-visible:ring-2 focus-visible:ring-secondary/40 [&_svg]:!text-white",
   secondary:
     "border border-border bg-white text-gray-700 shadow-sm hover:bg-canvas hover:shadow-md focus-visible:ring-2 focus-visible:ring-secondary/30",
   outline:
     "border border-border bg-white text-gray-700 hover:bg-canvas focus-visible:ring-2 focus-visible:ring-secondary/30",
   ghost: "text-gray-700 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-gray-300/30",
+  /** Heritage gold CTA — the premium signal (upgrade, premium unlocks). */
+  gold:
+    "!border !border-transparent !bg-[#9a7b2e] !text-white shadow-sm hover:!bg-[#826724] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#9a7b2e]/40 [&_svg]:!text-white",
+  /** Use inside dark hero / navy sections — translucent surface, white text. */
+  onDark:
+    "border border-white/15 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 hover:border-white/25 focus-visible:ring-2 focus-visible:ring-white/40 [&_svg]:text-white",
+  /** High-emphasis CTA on dark surfaces — white pill with brand text. */
+  onDarkPrimary:
+    "border border-transparent bg-white text-slate-900 shadow-sm hover:bg-slate-100 hover:shadow-md focus-visible:ring-2 focus-visible:ring-white/60",
   danger:
     "!border !border-transparent !bg-danger !text-white shadow-sm hover:!bg-[#b91c1c] hover:shadow-md focus-visible:ring-2 focus-visible:ring-red-400/50 [&_svg]:!text-white",
 } as const

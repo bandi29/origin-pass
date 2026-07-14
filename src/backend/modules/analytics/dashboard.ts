@@ -1,11 +1,7 @@
 "use server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import {
-  getScopedPassportIds,
-  getScopedProductIds,
-  NIL_UUID,
-} from "@/backend/modules/organizations/scope"
+import { getScopedOrgId, NIL_UUID } from "@/backend/modules/organizations/scope"
 
 export type DateRangePreset = "7d" | "30d" | "90d" | "custom"
 
@@ -35,18 +31,6 @@ export type CountryCount = { country: string; count: number }
 export type FraudDistribution = { status: string; count: number }
 export type TopProduct = { productId: string; productName: string; scans: number }
 export type OwnershipOverTimePoint = { date: string; claims: number }
-
-export type FraudAlert = {
-  id: string
-  passportId: string
-  serialNumber: string
-  productName: string
-  scanTimestamp: string
-  riskScore: number
-  scanResult: string
-  locationCountry: string | null
-  reason?: string
-}
 
 function getDateBounds(filters: AnalyticsFilters): { start: string; end: string } {
   const end = new Date()
@@ -85,77 +69,96 @@ function getPrevPeriodBounds(start: string, end: string): { start: string; end: 
   }
 }
 
+/**
+ * Scope helper: returns the organization_id for the current user, or a sentinel
+ * that matches no rows when the user has no org yet. Used as the WHERE filter on
+ * tables with a denormalized organization_id column.
+ *
+ * This replaces the previous pattern of loading all scoped passport IDs into Node
+ * and passing them to `.in('passport_id', ids)`, which hit Postgres's ~32k
+ * parameter ceiling at scale and shipped 1.6 MB of UUIDs per dashboard view.
+ */
+async function resolveOrgScope(userId: string): Promise<string> {
+  const orgId = await getScopedOrgId(userId)
+  return orgId ?? NIL_UUID
+}
+
 export async function getAnalyticsKpis(
   userId: string,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
 ): Promise<KpiMetrics> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
+  const orgId = await resolveOrgScope(userId)
   const { start, end } = getDateBounds(filters)
   const { start: prevStart, end: prevEnd } = getPrevPeriodBounds(start, end)
-
   const admin = createAdminClient()
-  const productIds = await getScopedProductIds(userId)
-  const productIdsForPassports = productIds.length ? productIds : [NIL_UUID]
 
-  const [currentScansRes, prevScansRes, currentUniqueRes, prevUniqueRes, passportCountRes, fraudCurrent, fraudPrev, ownershipCurrent, ownershipPrev] =
-    await Promise.all([
-      admin
-        .from("passport_scans")
-        .select("id", { head: true, count: "exact" })
-        .in("passport_id", ids)
-        .gte("scan_timestamp", `${start}T00:00:00Z`)
-        .lte("scan_timestamp", `${end}T23:59:59.999Z`),
-      admin
-        .from("passport_scans")
-        .select("id", { head: true, count: "exact" })
-        .in("passport_id", ids)
-        .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
-        .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
-      admin
-        .from("passport_scans")
-        .select("passport_id")
-        .in("passport_id", ids)
-        .gte("scan_timestamp", `${start}T00:00:00Z`)
-        .lte("scan_timestamp", `${end}T23:59:59.999Z`),
-      admin
-        .from("passport_scans")
-        .select("passport_id")
-        .in("passport_id", ids)
-        .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
-        .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
-      admin
-        .from("passports")
-        .select("id", { head: true, count: "exact" })
-        .in("product_id", productIdsForPassports)
-        .eq("status", "active"),
-      admin
-        .from("passport_scans")
-        .select("id", { head: true, count: "exact" })
-        .in("passport_id", ids)
-        .eq("scan_result", "suspicious")
-        .gte("scan_timestamp", `${start}T00:00:00Z`)
-        .lte("scan_timestamp", `${end}T23:59:59.999Z`),
-      admin
-        .from("passport_scans")
-        .select("id", { head: true, count: "exact" })
-        .in("passport_id", ids)
-        .eq("scan_result", "suspicious")
-        .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
-        .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
-      admin
-        .from("ownership_records")
-        .select("id", { head: true, count: "exact" })
-        .in("passport_id", ids)
-        .gte("claimed_at", `${start}T00:00:00Z`)
-        .lte("claimed_at", `${end}T23:59:59.999Z`),
-      admin
-        .from("ownership_records")
-        .select("id", { head: true, count: "exact" })
-        .in("passport_id", ids)
-        .gte("claimed_at", `${prevStart}T00:00:00Z`)
-        .lte("claimed_at", `${prevEnd}T23:59:59.999Z`),
-    ])
+  const [
+    currentScansRes,
+    prevScansRes,
+    currentUniqueRes,
+    prevUniqueRes,
+    passportCountRes,
+    fraudCurrent,
+    fraudPrev,
+    ownershipCurrent,
+    ownershipPrev,
+  ] = await Promise.all([
+    admin
+      .from("passport_scans")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .gte("scan_timestamp", `${start}T00:00:00Z`)
+      .lte("scan_timestamp", `${end}T23:59:59.999Z`),
+    admin
+      .from("passport_scans")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
+      .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
+    admin
+      .from("passport_scans")
+      .select("passport_id")
+      .eq("organization_id", orgId)
+      .gte("scan_timestamp", `${start}T00:00:00Z`)
+      .lte("scan_timestamp", `${end}T23:59:59.999Z`),
+    admin
+      .from("passport_scans")
+      .select("passport_id")
+      .eq("organization_id", orgId)
+      .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
+      .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
+    admin
+      .from("passports")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .eq("status", "active"),
+    admin
+      .from("passport_scans")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .eq("scan_result", "suspicious")
+      .gte("scan_timestamp", `${start}T00:00:00Z`)
+      .lte("scan_timestamp", `${end}T23:59:59.999Z`),
+    admin
+      .from("passport_scans")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .eq("scan_result", "suspicious")
+      .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
+      .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
+    admin
+      .from("ownership_records")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .gte("claimed_at", `${start}T00:00:00Z`)
+      .lte("claimed_at", `${end}T23:59:59.999Z`),
+    admin
+      .from("ownership_records")
+      .select("id", { head: true, count: "exact" })
+      .eq("organization_id", orgId)
+      .gte("claimed_at", `${prevStart}T00:00:00Z`)
+      .lte("claimed_at", `${prevEnd}T23:59:59.999Z`),
+  ])
 
   const currentUnique = new Set((currentUniqueRes.data ?? []).map((x) => x.passport_id)).size
   const prevUnique = new Set((prevUniqueRes.data ?? []).map((x) => x.passport_id)).size
@@ -176,19 +179,32 @@ export async function getAnalyticsKpis(
 
 export async function getScansOverTime(
   userId: string,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
 ): Promise<ScanOverTimePoint[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
+  const orgId = await resolveOrgScope(userId)
   const { start, end } = getDateBounds(filters)
-
   const admin = createAdminClient()
+
+  // SQL aggregation via RPC if available; fall back to in-memory bucketing.
+  const { data: agg, error: aggErr } = await admin.rpc("scans_per_day_for_org", {
+    p_organization_id: orgId,
+    p_start: `${start}T00:00:00Z`,
+    p_end: `${end}T23:59:59.999Z`,
+  })
+  if (!aggErr && Array.isArray(agg)) {
+    return (agg as Array<{ day: string; scans: number | string }>).map((row) => ({
+      date: String(row.day).slice(0, 10),
+      scans: Number(row.scans) || 0,
+    }))
+  }
+
   const { data: raw, error } = await admin
     .from("passport_scans")
     .select("scan_timestamp")
-    .in("passport_id", ids)
+    .eq("organization_id", orgId)
     .gte("scan_timestamp", `${start}T00:00:00Z`)
     .lte("scan_timestamp", `${end}T23:59:59.999Z`)
+    .limit(100_000)
 
   if (error || !raw) return []
 
@@ -204,20 +220,20 @@ export async function getScansOverTime(
 
 export async function getTopCountries(
   userId: string,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
 ): Promise<CountryCount[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
+  const orgId = await resolveOrgScope(userId)
   const { start, end } = getDateBounds(filters)
-
   const admin = createAdminClient()
+
   const { data, error } = await admin
     .from("passport_scans")
     .select("location_country")
-    .in("passport_id", ids)
+    .eq("organization_id", orgId)
     .gte("scan_timestamp", `${start}T00:00:00Z`)
     .lte("scan_timestamp", `${end}T23:59:59.999Z`)
     .not("location_country", "is", null)
+    .limit(100_000)
 
   if (error || !data) return []
 
@@ -234,19 +250,19 @@ export async function getTopCountries(
 
 export async function getFraudDistribution(
   userId: string,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
 ): Promise<FraudDistribution[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
+  const orgId = await resolveOrgScope(userId)
   const { start, end } = getDateBounds(filters)
-
   const admin = createAdminClient()
+
   const { data, error } = await admin
     .from("passport_scans")
     .select("scan_result")
-    .in("passport_id", ids)
+    .eq("organization_id", orgId)
     .gte("scan_timestamp", `${start}T00:00:00Z`)
     .lte("scan_timestamp", `${end}T23:59:59.999Z`)
+    .limit(100_000)
 
   if (error || !data) return []
 
@@ -260,19 +276,19 @@ export async function getFraudDistribution(
 
 export async function getTopProducts(
   userId: string,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
 ): Promise<TopProduct[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
+  const orgId = await resolveOrgScope(userId)
   const { start, end } = getDateBounds(filters)
-
   const admin = createAdminClient()
+
   const { data, error } = await admin
     .from("passport_scans")
     .select("passport_id, passports(product_id, products(name))")
-    .in("passport_id", ids)
+    .eq("organization_id", orgId)
     .gte("scan_timestamp", `${start}T00:00:00Z`)
     .lte("scan_timestamp", `${end}T23:59:59.999Z`)
+    .limit(100_000)
 
   if (error || !data) return []
 
@@ -293,19 +309,19 @@ export async function getTopProducts(
 
 export async function getOwnershipOverTime(
   userId: string,
-  filters: AnalyticsFilters
+  filters: AnalyticsFilters,
 ): Promise<OwnershipOverTimePoint[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
+  const orgId = await resolveOrgScope(userId)
   const { start, end } = getDateBounds(filters)
-
   const admin = createAdminClient()
+
   const { data, error } = await admin
     .from("ownership_records")
     .select("claimed_at")
-    .in("passport_id", ids)
+    .eq("organization_id", orgId)
     .gte("claimed_at", `${start}T00:00:00Z`)
     .lte("claimed_at", `${end}T23:59:59.999Z`)
+    .limit(100_000)
 
   if (error || !data) return []
 
@@ -317,46 +333,4 @@ export async function getOwnershipOverTime(
   return Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, claims]) => ({ date, claims }))
-}
-
-export async function getFraudAlerts(
-  userId: string,
-  filters: AnalyticsFilters,
-  limit = 20
-): Promise<FraudAlert[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
-  const { start, end } = getDateBounds(filters)
-
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from("passport_scans")
-    .select(`
-      id, passport_id, scan_timestamp, scan_result, risk_score, location_country,
-      passports(serial_number, products(name))
-    `)
-    .in("passport_id", ids)
-    .eq("scan_result", "suspicious")
-    .gte("scan_timestamp", `${start}T00:00:00Z`)
-    .lte("scan_timestamp", `${end}T23:59:59.999Z`)
-    .order("scan_timestamp", { ascending: false })
-    .limit(limit)
-
-  if (error || !data) return []
-
-  return (data as Array<Record<string, unknown>>).map((r) => {
-    const p = r.passports as { serial_number?: string; products?: { name?: string } | null } | null
-    const prod = Array.isArray(p?.products) ? p?.products?.[0] : p?.products
-    return {
-    id: String(r.id),
-    passportId: String(r.passport_id),
-    serialNumber: p?.serial_number ?? "—",
-    productName: prod?.name ?? "—",
-    scanTimestamp: String(r.scan_timestamp),
-    riskScore: (r.risk_score as number) ?? 0,
-    scanResult: String(r.scan_result),
-    locationCountry: r.location_country as string | null,
-    reason: (r.risk_score as number) != null && (r.risk_score as number) >= 70 ? "High-risk pattern" : "Suspicious activity",
-  }
-  })
 }

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { readPipelineFromMapping } from "@/lib/import-products/import-catalog-pipeline"
 
 export const runtime = "nodejs"
 
@@ -31,6 +32,20 @@ export async function GET(_req: Request, context: { params: Promise<Params> }) {
   const processed = job.processed_rows ?? 0
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
 
+  let pipeline = null
+  if (job.product_import_log_id) {
+    const { data: log } = await supabase
+      .from("product_import_logs")
+      .select("mapping")
+      .eq("id", job.product_import_log_id)
+      .maybeSingle()
+    pipeline = readPipelineFromMapping(log?.mapping)
+  }
+
+  const pipelineStage =
+    pipeline?.stage ??
+    (job.status === "PROCESSING" ? "catalog" : job.status === "COMPLETED" ? "done" : null)
+
   return Response.json({
     jobId: job.id,
     status: job.status,
@@ -43,5 +58,8 @@ export async function GET(_req: Request, context: { params: Promise<Params> }) {
     productImportLogId: job.product_import_log_id,
     lastError: job.last_error,
     updatedAt: job.updated_at,
+    pipelineStage,
+    pipeline,
+    exportReady: pipeline?.exportReady ?? false,
   })
 }

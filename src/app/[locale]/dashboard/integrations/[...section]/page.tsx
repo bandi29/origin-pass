@@ -11,7 +11,8 @@ const sections: Record<string, string> = {
 
 export default async function IntegrationsSectionPage({ params }: { params: Promise<{ section: string[] }> }) {
     const { section } = await params
-    const key = section[0]
+    // Legacy / mistaken path used "api" in some links; canonical segment is "api-keys".
+    const key = section[0] === "api" ? "api-keys" : section[0]
     if (!sections[key]) notFound()
 
     return (

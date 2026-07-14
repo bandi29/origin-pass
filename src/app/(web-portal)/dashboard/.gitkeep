@@ -1,0 +1,2 @@
+Reserved for the standalone web-portal dashboard (Phase 3).
+Intentionally has no page.tsx yet to avoid colliding with the i18n /[locale]/dashboard route.

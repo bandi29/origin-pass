@@ -1,0 +1,37 @@
+{
+  "testCaseId": "textile-espr-case-2",
+  "title": "Textile — ESPR & fiber logic",
+  "description": "Certificate-style fixture for extraction / compliance validation (fiber %, recycled content, care-related narrative).",
+  "targetFields": {
+    "complianceCategory": "textile",
+    "fiberCompositionSummary": "100% GOTS Certified Organic Cotton",
+    "recycledContentPercentage": 0,
+    "washCareHint": "Document does not list a separate wash-care label; extraction may infer from material (organic cotton canvas) or leave to manual entry.",
+    "originCountry": "Portugal"
+  },
+  "certificate": {
+    "number": "TEX-4411",
+    "supplier": "GreenWeave Textiles Ltd.",
+    "dateIso": "2026-03-22",
+    "dateDisplay": "March 22, 2026"
+  },
+  "technical": {
+    "article": "Organic Cotton Canvas (Heavyweight)",
+    "dyeing": "Low-impact, REACH compliant non-toxic pigments",
+    "expectedLifespan": "10+ years (Heavy-duty grade)",
+    "repairability": "High (Standard stitching)",
+    "factoryCode": "P-LIS-992"
+  },
+  "schemaMappingHints": {
+    "fiber_composition": "100% GOTS Certified Organic Cotton",
+    "recycled_content_percentage": 0,
+    "durability_class_or_claim": "10+ years (Heavy-duty grade)",
+    "origin_country": "Portugal",
+    "product_story": "May combine supplier, repairability, dyeing, factory code; wash care if model infers standard cotton care"
+  },
+  "staticAssets": {
+    "pdfRelativeUrl": "/test-fixtures/validation/textile-espr-case-2.pdf",
+    "plainTextRelativeUrl": "/test-fixtures/validation/textile-espr-case-2.txt",
+    "manifestRelativeUrl": "/test-fixtures/validation/textile-espr-case-2.manifest.json"
+  }
+}

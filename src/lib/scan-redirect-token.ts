@@ -3,11 +3,12 @@ import { createHmac, timingSafeEqual } from "crypto"
 const WINDOW_SEC = 120
 
 function secret(): string {
-  return (
-    process.env.SCAN_REDIRECT_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "dev-scan-redirect-secret-change-me"
-  )
+  const configured = process.env.SCAN_REDIRECT_SECRET
+  if (configured && configured.length > 0) return configured
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SCAN_REDIRECT_SECRET environment variable is required in production")
+  }
+  return "dev-scan-redirect-secret-change-me"
 }
 
 export function createScanRedirectToken(passportId: string): { sk: string; skt: string } {

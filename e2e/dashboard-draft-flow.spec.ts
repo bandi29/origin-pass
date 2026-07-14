@@ -44,7 +44,7 @@ test.describe("Dashboard draft flow", () => {
     await expect(page.getByText(/Saved .* ago|Saved just now|Saved recently/)).toBeVisible()
 
     await page.getByRole("button", { name: /Resume draft/i }).click()
-    await expect(page.getByDisplayValue("Flow Draft Product")).toBeVisible()
+    await expect(page.getByPlaceholder("Handcrafted Leather Satchel")).toHaveValue("Flow Draft Product")
   })
 
   test("User can delete pending draft", async ({ page }) => {

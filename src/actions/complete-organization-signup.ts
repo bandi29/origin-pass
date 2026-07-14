@@ -4,6 +4,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { userHasOrganization } from "@/lib/auth-org"
+import { seedTeamInfrastructureIfNeeded } from "@/lib/team/team-context"
 
 const orgNameSchema = z
   .string()
@@ -77,6 +78,7 @@ export async function completeOrganizationSignup(
       email,
       organization_id: org.id,
       role: "owner",
+      role_v2: "tenant_admin",
     },
     { onConflict: "id" }
   )
@@ -97,6 +99,8 @@ export async function completeOrganizationSignup(
     },
     { onConflict: "id" }
   )
+
+  await seedTeamInfrastructureIfNeeded(admin, org.id, user.id)
 
   return { success: true }
 }

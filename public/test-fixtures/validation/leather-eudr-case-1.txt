@@ -1,0 +1,27 @@
+Test Case 1: Leather (Tests EUDR & Tanning Logic)
+
+Target Fields: Compliance category (Leather), Primary material, EUDR reference, Origin geo (lat/long).
+
+INVOICE: #LT-8822
+Vendor: Florentine Hide & Grain S.p.A.
+Date: April 10, 2026
+
+Product Details:
+
+Material: Vegetable-Tanned Full-Grain Bovine Leather
+
+Quantity: 120 sq. ft.
+
+Batch ID: B-9932-ITA
+
+DPP / Compliance Metadata:
+
+Raw Material Origin: Italy (Tuscany Region)
+
+Geolocation (Farm/Plot): 43.7696, 11.2558
+
+EUDR Due Diligence Statement: DDS-ITA-2026-X884
+
+Tanning Method: Chrome-free, Vegetable extracts
+
+LWG Certification: Gold Grade (Ref: LWG-552)

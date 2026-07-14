@@ -1,4 +1,4 @@
-import type { CategoryKey, SchemaField } from "./category-schemas"
+import type { CategoryKey, FieldSection, SchemaField } from "./category-schemas"
 import { categorySchemas } from "./category-schemas"
 import type { CategoryComplianceStrategy, ComplianceData } from "./category-compliance-strategy"
 import { getCategoryComplianceStrategy } from "./category-compliance-strategy"
@@ -57,6 +57,75 @@ export function getComplianceFieldErrors(
   }
 
   return errors
+}
+
+/** Section order when deep-linking to missing certification / evidence fields. */
+const HIGHLIGHT_SECTIONS_AUTHENTICITY: FieldSection[] = ["certifications", "traceability", "compliance"]
+const HIGHLIGHT_SECTIONS_COMPLIANCE: FieldSection[] = ["compliance"]
+
+/**
+ * First required schema field (by section priority) that is still empty — for notification / URL deep links.
+ * {@link highlight}: `authenticity` → certs & traceability first; `compliance` → regulatory block only.
+ */
+export function getFirstMissingRequiredFieldKeyForHighlight(
+  categoryKey: CategoryKey | "" | null | undefined,
+  complianceData: ComplianceData,
+  highlight: string,
+): string | null {
+  if (!categoryKey) return null
+  const trimmed = highlight.trim().toLowerCase()
+  const sectionOrder: FieldSection[] =
+    trimmed === "authenticity"
+      ? HIGHLIGHT_SECTIONS_AUTHENTICITY
+      : trimmed === "compliance"
+        ? HIGHLIGHT_SECTIONS_COMPLIANCE
+        : []
+
+  if (sectionOrder.length === 0) return null
+
+  const schema = categorySchemas[categoryKey]
+  const strategy = getCategoryComplianceStrategy(categoryKey)
+  if (!schema?.fields || !strategy) return null
+
+  for (const section of sectionOrder) {
+    for (const field of schema.fields) {
+      if (field.section !== section || !field.required) continue
+      const v = getValue(strategy, field, complianceData)
+      if (field.type === "geo" && field.eudrGeoRequired) {
+        const geo = strategy.getFieldValue(complianceData, field) as { lat?: number; lng?: number } | null
+        if (!geo || geo.lat == null || geo.lng == null) return field.key
+        continue
+      }
+      if (field.type === "geo" && field.required) {
+        const geo = strategy.getFieldValue(complianceData, field) as { lat?: number; lng?: number } | null
+        if (!geo || geo.lat == null || geo.lng == null) return field.key
+        continue
+      }
+      if (isEmpty(v)) return field.key
+    }
+  }
+  return null
+}
+
+/** Field keys for `type: "geo"` that are still missing coordinates (same rules as {@link getComplianceFieldErrors}). */
+export function getIncompleteGeoFieldKeys(categoryKey: CategoryKey, complianceData: ComplianceData): string[] {
+  const schema = categorySchemas[categoryKey]
+  const strategy = getCategoryComplianceStrategy(categoryKey)
+  if (!schema || !strategy) return []
+  const keys: string[] = []
+  for (const field of schema.fields) {
+    if (field.type !== "geo") continue
+    if (field.eudrGeoRequired) {
+      const geo = strategy.getFieldValue(complianceData, field) as { lat?: number; lng?: number } | null
+      if (!geo || geo.lat == null || geo.lng == null) keys.push(field.key)
+      continue
+    }
+    if (field.required) {
+      const geo = strategy.getFieldValue(complianceData, field) as { lat?: number; lng?: number } | null
+      if (!geo || geo.lat == null || geo.lng == null) keys.push(field.key)
+    }
+  }
+  return keys
 }
 
 export function validateCategoryProduct(

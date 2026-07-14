@@ -66,14 +66,14 @@ export async function POST(req: Request) {
   if (job.status === "PROCESSING") {
     return Response.json({ error: "Import already running.", jobId }, { status: 409 })
   }
-  if (job.status === "COMPLETED") {
-    return Response.json({ error: "This import already completed. Upload a new file to import again." }, { status: 409 })
-  }
 
   const mappingJson = mapping as unknown as Record<string, unknown>
   const now = new Date().toISOString()
 
-  if (job.status === "FAILED" || job.status === "PARTIAL_SUCCESS") {
+  // Include COMPLETED: users can step back from Done to Validate (stepper) and choose "Run import"
+  // again with the same sessionId, or re-import after undo without a new upload when hash dedupe
+  // reused the same job row.
+  if (job.status === "FAILED" || job.status === "PARTIAL_SUCCESS" || job.status === "COMPLETED") {
     await supabase.from("import_errors").delete().eq("job_id", jobId)
     const { data: retryRow, error: retryErr } = await supabase
       .from("import_jobs")
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       })
       .eq("id", jobId)
       .eq("user_id", user.id)
-      .in("status", ["FAILED", "PARTIAL_SUCCESS"])
+      .in("status", ["FAILED", "PARTIAL_SUCCESS", "COMPLETED"])
       .select("id")
       .maybeSingle()
 

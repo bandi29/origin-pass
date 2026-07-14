@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   createProductBodySchema,
+  patchProductBodySchema,
   passportUpsertBodySchema,
   qrcodeBodySchema,
 } from "./passport-wizard-schemas"
@@ -30,5 +31,32 @@ describe("qrcodeBodySchema", () => {
     expect(
       qrcodeBodySchema.safeParse({ passportId: "550e8400-e29b-41d4-a716-446655440000" }).success
     ).toBe(true)
+  })
+
+  it("accepts quantity with bounds", () => {
+    expect(
+      qrcodeBodySchema.safeParse({
+        passportId: "550e8400-e29b-41d4-a716-446655440000",
+        quantity: 25,
+      }).success
+    ).toBe(true)
+    expect(
+      qrcodeBodySchema.safeParse({
+        passportId: "550e8400-e29b-41d4-a716-446655440000",
+        quantity: 0,
+      }).success
+    ).toBe(false)
+  })
+})
+
+describe("patchProductBodySchema", () => {
+  it("accepts complianceCategoryKey alone", () => {
+    const r = patchProductBodySchema.safeParse({ complianceCategoryKey: "leather" })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.complianceCategoryKey).toBe("leather")
+  })
+
+  it("rejects invalid complianceCategoryKey", () => {
+    expect(patchProductBodySchema.safeParse({ complianceCategoryKey: "invalid" }).success).toBe(false)
   })
 })

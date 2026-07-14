@@ -2,6 +2,9 @@
 
 import type { FraudAnalyticsPayload } from "@/lib/authenticity-intelligence"
 import { Card } from "@/components/ui/Card"
+import { StatCard } from "@/components/ui/StatCard"
+import { typography } from "@/design-system/tokens"
+import { AlertOctagon, ShieldAlert, ShieldCheck } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -43,50 +46,37 @@ export function AuthenticityFraudAnalyticsClient({
 
   return (
     <div className="space-y-8">
+      {/* KPI strip via shared StatCard primitive — matches the dashboard / analytics rhythm. */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card
-          padding
-          className="rounded-2xl border border-ds-border bg-white shadow-sm"
-        >
-          <p className="text-xs font-medium uppercase tracking-wide text-ds-text-muted">
-            Total alerts (30 days)
-          </p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums text-ds-text">
-            {data.kpis.totalAlerts30d.toLocaleString()}
-          </p>
-        </Card>
-        <Card
-          padding
-          className="rounded-2xl border border-ds-border bg-white shadow-sm"
-        >
-          <p className="text-xs font-medium uppercase tracking-wide text-ds-text-muted">
-            High-risk products
-          </p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums text-red-700">
-            {data.kpis.highRiskProducts.toLocaleString()}
-          </p>
-        </Card>
-        <Card
-          padding
-          className="rounded-2xl border border-ds-border bg-white shadow-sm"
-        >
-          <p className="text-xs font-medium uppercase tracking-wide text-ds-text-muted">
-            Suspicious share of scans
-          </p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums text-emerald-700">
-            {data.kpis.suspiciousSharePct}%
-          </p>
-        </Card>
+        <StatCard
+          label="Total alerts (30 days)"
+          value={<span className="tabular-nums">{data.kpis.totalAlerts30d.toLocaleString()}</span>}
+          icon={<ShieldAlert />}
+          tone="amber"
+        />
+        <StatCard
+          label="High-risk products"
+          value={
+            <span className="tabular-nums text-red-700">
+              {data.kpis.highRiskProducts.toLocaleString()}
+            </span>
+          }
+          icon={<AlertOctagon />}
+          tone="rose"
+        />
+        <StatCard
+          label="Suspicious share of scans"
+          value={
+            <span className="tabular-nums text-emerald-700">{data.kpis.suspiciousSharePct}%</span>
+          }
+          icon={<ShieldCheck />}
+          tone="emerald"
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card
-          padding
-          className="rounded-2xl border border-ds-border bg-white shadow-sm"
-        >
-          <h3 className="text-sm font-semibold text-ds-text">
-            Suspicious activity over time
-          </h3>
+        <Card>
+          <h3 className={typography.h3}>Suspicious activity over time</h3>
           <div className="mt-4 h-72">
             {lineData.length === 0 ? (
               <p className="py-12 text-center text-sm text-ds-text-muted">
@@ -116,11 +106,8 @@ export function AuthenticityFraudAnalyticsClient({
           </div>
         </Card>
 
-        <Card
-          padding
-          className="rounded-2xl border border-ds-border bg-white shadow-sm"
-        >
-          <h3 className="text-sm font-semibold text-ds-text">Top affected products</h3>
+        <Card>
+          <h3 className={typography.h3}>Top affected products</h3>
           <div className="mt-4 h-72">
             {data.topAffected.length === 0 ? (
               <p className="py-12 text-center text-sm text-ds-text-muted">
@@ -150,11 +137,8 @@ export function AuthenticityFraudAnalyticsClient({
         </Card>
       </div>
 
-      <Card
-        padding
-        className="rounded-2xl border border-ds-border bg-white shadow-sm"
-      >
-        <h3 className="text-sm font-semibold text-ds-text">Scan result mix (non-valid)</h3>
+      <Card>
+        <h3 className={typography.h3}>Scan result mix (non-valid)</h3>
         <div className="mt-4 flex flex-col items-center gap-4 lg:flex-row lg:justify-center">
           {data.alertMix.length === 0 ? (
             <p className="py-8 text-center text-sm text-ds-text-muted">

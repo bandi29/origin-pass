@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
   const { data: log } = await supabase
     .from("product_import_logs")
-    .select("id, brand_id")
+    .select("id, brand_id, status")
     .eq("id", importLogId)
     .maybeSingle()
 
@@ -36,11 +36,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Import log not found" }, { status: 404 })
   }
 
+  const alreadyReverted = String(log.status ?? "") === "reverted"
+  if (alreadyReverted) {
+    return Response.json({ archivedCount: 0, alreadyReverted: true })
+  }
+
+  /** Only rows still active — avoids counting the same products again on repeat undo. */
   const { data: updated, error } = await supabase
     .from("products")
     .update({ is_archived: true })
     .eq("import_log_id", importLogId)
     .eq("brand_id", user.id)
+    .eq("is_archived", false)
     .select("id")
 
   if (error) {
@@ -48,11 +55,13 @@ export async function POST(req: Request) {
     return Response.json({ error: "Could not archive imported products." }, { status: 500 })
   }
 
+  const archivedCount = updated?.length ?? 0
+
   await supabase
     .from("product_import_logs")
     .update({ status: "reverted" })
     .eq("id", importLogId)
     .eq("brand_id", user.id)
 
-  return Response.json({ archivedCount: updated?.length ?? 0 })
+  return Response.json({ archivedCount, alreadyReverted: false })
 }

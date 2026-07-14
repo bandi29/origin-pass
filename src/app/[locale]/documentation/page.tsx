@@ -203,6 +203,12 @@ export default function DocumentationPage() {
                                 <span className="bg-blue-100 text-blue-700 p-1.5 rounded-lg"><ShieldCheck className="w-6 h-6" /></span>
                                 EU Compliance (DPP 2026)
                             </h2>
+                            <div id="textile-2028" className="scroll-mt-24 rounded-lg border border-blue-100 bg-blue-50/50 px-4 py-3 text-sm text-slate-700">
+                                <p className="font-semibold text-slate-900">Textile guidance · 2028 draft</p>
+                                <p className="mt-1 leading-relaxed">
+                                    ESPR textile-specific reporting timelines continue to evolve. Use OriginPass compliance fields to capture fiber composition, recycled content, and due diligence now so you are aligned when the 2028 registry rules firm up.
+                                </p>
+                            </div>
                             <p className="text-slate-600 leading-relaxed">
                                 The European Union&apos;s Digital Product Passport (DPP) regulation aims to improve product sustainability and traceability. OriginPass is designed to meet the core data requirements for textiles, leather, and artisan goods.
                             </p>

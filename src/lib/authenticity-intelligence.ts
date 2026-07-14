@@ -58,11 +58,27 @@ export type GeoHeatRow = {
 export type AuditLogEntry = {
   event_id: string
   product_id: string
-  action: "Scan" | "Verify" | "Flagged"
-  result: "Success" | "Failed"
+  /** Joined from `products` for display; optional for older cached payloads. */
+  product_name?: string | null
+  action:
+    | "Scan"
+    | "Verify"
+    | "Flagged"
+    | "PassportCreated"
+    | "LifecycleUpdated"
+    | "VerificationRun"
+    | "AlertReview"
+    | "ImportBatch"
+    | string
+  /** Outcome: suspicious scans are not "Success" (they need review). */
+  result: "Success" | "Failed" | "Suspicious" | "Info"
+  /** Derived from passport_scans.scan_result for UI / filters (valid | suspicious | failed). */
+  verdict: "valid" | "suspicious" | "failed" | "neutral"
   location: string
   timestamp: string
   actor: string
+  /** Helps split verification asset-chain events from operations admin logs in the UI. */
+  category?: "scan" | "passport" | "lifecycle" | "verification" | "team" | "import" | "system"
 }
 
 function haversineKm(

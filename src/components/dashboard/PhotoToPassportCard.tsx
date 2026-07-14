@@ -42,12 +42,14 @@ export function PhotoToPassportCard({ getCurrentDraft, onApplyDraft }: Props) {
       })
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
+        debugHint?: string
         extraction?: ComplianceIngestionResult
         provider?: "gemini" | "openai"
         filesProcessed?: number
       }
       if (!res.ok) {
-        throw new Error(data.error || "Request failed")
+        const hint = data.debugHint ? ` — ${data.debugHint}` : ""
+        throw new Error((data.error || "Request failed") + hint)
       }
       if (!data.extraction) {
         throw new Error("Invalid response")

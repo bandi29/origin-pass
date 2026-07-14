@@ -1,5 +1,6 @@
 import Papa from "papaparse"
 import * as XLSX from "xlsx"
+import { sheetToStringRecordRows } from "./xlsx-smart"
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024
 /** Larger cap for async job uploads (still bounded for memory on XLSX path). */
@@ -24,9 +25,24 @@ function rowToStringRecord(row: Record<string, unknown>, headers: string[]): Rec
   return out
 }
 
-function isZipMagic(buf: Buffer): boolean {
+/** ZIP container (xlsx, Apple Numbers, etc.) — not a plain-text CSV. */
+export function isZipMagic(buf: Buffer): boolean {
   return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b
 }
+
+const UNSUPPORTED_EXTENSIONS = new Set([
+  ".numbers",
+  ".ods",
+  ".xls",
+  ".pdf",
+  ".zip",
+])
+
+export const CSV_ZIP_MISMATCH_ERROR =
+  "This file is not plain-text CSV — it looks like an Apple Numbers or Excel workbook. Do not rename the file: in Numbers use File → Export To → CSV (or Excel), then upload the exported file."
+
+export const NUMBERS_EXPORT_HINT =
+  "Apple Numbers (.numbers) cannot be imported directly. Use File → Export To → CSV or Excel (.xlsx), then upload that file."
 
 export function assertAllowedFile(
   name: string,
@@ -37,7 +53,14 @@ export function assertAllowedFile(
   if (buf.length === 0) return { ok: false, error: "File is empty." }
   if (buf.length > maxBytes)
     return { ok: false, error: `File exceeds ${Math.round(maxBytes / (1024 * 1024))}MB limit.` }
+  for (const ext of UNSUPPORTED_EXTENSIONS) {
+    if (lower.endsWith(ext)) {
+      if (ext === ".numbers") return { ok: false, error: NUMBERS_EXPORT_HINT }
+      return { ok: false, error: `Only .csv and .xlsx are supported (got ${ext}).` }
+    }
+  }
   if (lower.endsWith(".csv")) {
+    if (isZipMagic(buf)) return { ok: false, error: CSV_ZIP_MISMATCH_ERROR }
     return { ok: true }
   }
   if (lower.endsWith(".xlsx")) {
@@ -53,6 +76,7 @@ export function parseSpreadsheet(filename: string, buf: Buffer): ParsedSheet | {
 
   const lower = filename.toLowerCase()
   if (lower.endsWith(".csv")) {
+    if (isZipMagic(buf)) return { error: CSV_ZIP_MISMATCH_ERROR }
     const text = buf.toString("utf8")
     const parsed = Papa.parse<Record<string, string>>(text, {
       header: true,
@@ -64,7 +88,12 @@ export function parseSpreadsheet(filename: string, buf: Buffer): ParsedSheet | {
       if (fatal) return { error: `CSV parse error: ${fatal.message}` }
     }
     const data = (parsed.data || []).filter((r) => Object.values(r).some((v) => String(v).trim() !== ""))
-    if (data.length === 0) return { error: "No data rows found in CSV." }
+    if (data.length === 0) {
+      return {
+        error:
+          "No data rows found in CSV. If this came from Apple Numbers, export as CSV or Excel — do not rename a .numbers file to .csv.",
+      }
+    }
     const headers = parsed.meta.fields?.filter(Boolean) as string[]
     if (!headers?.length) return { error: "CSV has no header row." }
     const rows = data.slice(0, MAX_ROWS).map((r) => {
@@ -80,12 +109,10 @@ export function parseSpreadsheet(filename: string, buf: Buffer): ParsedSheet | {
     const sheetName = wb.SheetNames[0]
     if (!sheetName) return { error: "Excel workbook has no sheets." }
     const sheet = wb.Sheets[sheetName]
-    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
-    if (!json.length) return { error: "First sheet is empty." }
-    const headers = Object.keys(json[0]!).map((k) => k.trim()).filter(Boolean)
+    const { headers, rows: allRows } = sheetToStringRecordRows(sheet)
     if (!headers.length) return { error: "Could not read column headers." }
-    const rows = json.slice(0, MAX_ROWS).map((r) => rowToStringRecord(r, headers))
-    return { headers, rows }
+    if (!allRows.length) return { error: "First sheet is empty or has no data rows after the header." }
+    return { headers, rows: allRows.slice(0, MAX_ROWS) }
   }
 
   return { error: "Unsupported format." }

@@ -14,8 +14,17 @@ module.exports = {
         },
       },
       colors: {
-        primary: "#0F172A",
-        secondary: "#6366F1",
+        // Brand navy is the unified primary + interaction accent (heritage navy+gold).
+        primary: "#0B1F4D",
+        secondary: "#0B1F4D",
+        brand: "#0B1F4D",
+        "brand-strong": "#081636",
+        "brand-soft": "#EEF1F7",
+        // Gold accent — the premium / certification signal.
+        accent: "#9A7B2E",
+        "accent-strong": "#826724",
+        "accent-bright": "#C9A227",
+        "accent-soft": "#F7F1E0",
         canvas: "#F8FAFC",
         muted: "#64748B",
         border: "#E2E8F0",
@@ -28,15 +37,18 @@ module.exports = {
         "purple-soft": "#EDE9FE",
         "green-soft": "#DCFCE7",
         "orange-soft": "#FFEDD5",
+        "gold-soft": "#F7F1E0",
       },
       borderRadius: {
         xl: "12px",
         "2xl": "16px",
       },
+      // Tinted, layered shadows (cool navy undertone) — mirrors globals.css @theme.
       boxShadow: {
-        sm: "0 1px 2px rgba(0,0,0,0.05)",
-        md: "0 4px 12px rgba(0,0,0,0.08)",
-        lg: "0 10px 25px rgba(0,0,0,0.12)",
+        sm: "0 1px 1px rgba(15,23,42,0.04), 0 1px 2px rgba(15,23,42,0.06)",
+        md: "0 2px 4px rgba(15,23,42,0.05), 0 6px 16px rgba(15,23,42,0.08)",
+        lg: "0 4px 8px rgba(15,23,42,0.06), 0 16px 32px rgba(15,23,42,0.12)",
+        xl: "0 8px 16px rgba(15,23,42,0.08), 0 28px 56px rgba(15,23,42,0.16)",
       },
       spacing: {
         18: "4.5rem",

@@ -5,6 +5,7 @@ import * as XLSX from "xlsx"
 import { createClient } from "@/lib/supabase/server"
 import type { ColumnMapping } from "@/lib/import-products/types"
 import { validateMappedRows } from "@/lib/import-products/validate"
+import { sheetToStringRecordRows } from "@/lib/import-products/xlsx-smart"
 import type { ValidateResult } from "@/lib/import-products/types"
 
 const BATCH = 2000
@@ -20,18 +21,9 @@ async function* iterateRows(absPath: string, fileName: string): AsyncGenerator<R
     const sheetName = wb.SheetNames[0]
     if (!sheetName) return
     const sheet = wb.Sheets[sheetName]
-    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
-    if (!json.length) return
-    const headers = Object.keys(json[0]!).map((k) => k.trim()).filter(Boolean)
-    for (const raw of json) {
-      const row: Record<string, string> = {}
-      for (const h of headers) {
-        const v = raw[h]
-        if (v == null) row[h] = ""
-        else if (typeof v === "number" || typeof v === "boolean") row[h] = String(v)
-        else if (v instanceof Date) row[h] = v.toISOString().slice(0, 10)
-        else row[h] = String(v).trim()
-      }
+    const { headers, rows } = sheetToStringRecordRows(sheet)
+    if (!headers.length || !rows.length) return
+    for (const row of rows) {
       yield row
     }
     return

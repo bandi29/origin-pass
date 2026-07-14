@@ -12,18 +12,30 @@ type RequireAuthOptions = {
  */
 export async function requireAuth(options: RequireAuthOptions = {}) {
   const { requireOrganization = true } = options
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
 
-  if (!user) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
+    if (error) {
+      console.error("[requireAuth] getUser failed:", error.message)
+      redirect("/login")
+    }
+
+    if (!user) {
+      redirect("/login")
+    }
+
+    if (requireOrganization && !(await userHasOrganization(user.id))) {
+      redirect("/signup/complete")
+    }
+
+    return { user }
+  } catch (err) {
+    console.error("[requireAuth] unexpected:", err instanceof Error ? err.message : err)
     redirect("/login")
   }
-
-  if (requireOrganization && !(await userHasOrganization(user.id))) {
-    redirect("/signup/complete")
-  }
-
-  return { user }
 }

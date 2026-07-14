@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { CATEGORY_KEYS } from "@/lib/compliance/category-schemas"
 
 export const materialRowSchema = z.object({
   name: z.string().max(200).optional().or(z.literal("")),
@@ -20,7 +21,20 @@ export const createProductBodySchema = z.object({
   originRegion: z.string().max(120).optional().nullable(),
 })
 
-export const patchProductBodySchema = createProductBodySchema.partial()
+export const patchProductBodySchema = createProductBodySchema.partial().extend({
+  /** Merged into `products.compliance_data` for compliance-category products */
+  complianceData: z.record(z.string(), z.unknown()).optional(),
+  sku: z.string().max(200).optional().nullable(),
+  /** Sets `products.compliance_category_key` (wizard step 2 or migrations). */
+  complianceCategoryKey: z.enum(CATEGORY_KEYS).optional(),
+  /** Inline origin/hero fixes from secure issuance wizard (works without compliance category). */
+  issuanceRemediation: z
+    .object({
+      originCountry: z.string().max(120).optional(),
+      heroImageUrl: z.string().max(2000).optional(),
+    })
+    .optional(),
+})
 
 export const passportUpsertBodySchema = z.object({
   productId: z.string().uuid(),
@@ -31,6 +45,8 @@ export const passportUpsertBodySchema = z.object({
 
 export const qrcodeBodySchema = z.object({
   passportId: z.string().uuid(),
+  /** Production batch size — one passport, N unique QR tracking labels. */
+  quantity: z.coerce.number().int().min(1).max(1000).default(1),
 })
 
 export type MaterialRow = z.infer<typeof materialRowSchema>

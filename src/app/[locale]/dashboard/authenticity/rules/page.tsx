@@ -1,14 +1,6 @@
-import { PageHeader } from "@/components/layout/PageHeader"
-import { AuthenticityRulesClient } from "@/components/authenticity/AuthenticityRulesClient"
+import { redirect } from "next/navigation"
+import { VERIFICATION_ROUTES } from "@/lib/verification-nav"
 
-export default function DashboardAuthenticityRulesPage() {
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Verification rules"
-        description="Configure verification rules and policies."
-      />
-      <AuthenticityRulesClient />
-    </div>
-  )
+export default function DashboardAuthenticityRulesRedirect() {
+  redirect(VERIFICATION_ROUTES.rules)
 }

@@ -22,6 +22,17 @@
   button {
     appearance: none;
   }
+
+  /* Consistent clickable affordance (Tailwind resets can leave default arrow on buttons). */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 /*
@@ -39,9 +50,13 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Brand & UI (premium slate + accent) */
-  --color-primary: #0f172a;
-  --color-secondary: #6366f1;
+  /* ── Brand & UI (premium heritage: navy + gold) ───────────────────────
+   * Primary is the true brand navy (#0B1F4D) — previously this was slate-900
+   * (#0f172a) while the navy lived as a magic hex in inline styles. Unifying
+   * them gives one disciplined brand colour across every primary surface. */
+  --color-primary: #0b1f4d;
+  /* Interaction / focus accent — navy, not the generic dev-indigo it replaced. */
+  --color-secondary: #0b1f4d;
   --color-muted: #64748b;
   --color-surface: #ffffff;
   --color-border: #e2e8f0;
@@ -49,7 +64,20 @@
   --color-warning: #f59e0b;
   --color-danger: #dc2626;
 
-  /* Section / canvas (light neutral — not the indigo `secondary` accent) */
+  /* Brand navy scale */
+  --color-brand: #0b1f4d;          /* base — primary buttons, brand chrome */
+  --color-brand-strong: #081636;   /* hover / pressed */
+  --color-brand-soft: #eef1f7;     /* very light navy tint — chip / hover bg */
+
+  /* Gold accent (antique / champagne) — the heritage "premium" signal.
+   * `accent` is contrast-safe (~5:1 on white) for text/icons; `accent-bright`
+   * is for decorative fills, hairlines, and seals where contrast isn't a gate. */
+  --color-accent: #9a7b2e;
+  --color-accent-strong: #826724;
+  --color-accent-bright: #c9a227;
+  --color-accent-soft: #f7f1e0;
+
+  /* Section / canvas (light neutral — not an accent) */
   --color-canvas: #f8fafc;
 
   /* Soft icon / chip surfaces */
@@ -57,12 +85,14 @@
   --color-purple-soft: #ede9fe;
   --color-green-soft: #dcfce7;
   --color-orange-soft: #ffedd5;
+  --color-gold-soft: #f7f1e0;
 
-  /* Legacy ds-* (dashboard, forms) */
+  /* Legacy ds-* (dashboard, forms) — text stays slate-900 for legibility;
+   * only the interaction accent (ds-secondary) follows the brand navy. */
   --color-ds-bg: #f8fafc;
   --color-ds-surface: #ffffff;
-  --color-ds-primary: #0f172a;
-  --color-ds-secondary: #6366f1;
+  --color-ds-primary: #0b1f4d;
+  --color-ds-secondary: #0b1f4d;
   --color-ds-success: #16a34a;
   --color-ds-warning: #f59e0b;
   --color-ds-danger: #dc2626;
@@ -74,10 +104,14 @@
   --radius-xl: 12px;
   --radius-2xl: 16px;
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.12);
+  /* ── Elevation ─────────────────────────────────────────────────────────
+   * Tinted, layered shadows. The cool navy undertone (rgb 15,23,42) and the
+   * two-layer composition read as "designed depth" rather than a pure-black
+   * cut-out — the subtle premium signal Linear/Stripe/Vercel all share. */
+  --shadow-sm: 0 1px 1px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.05), 0 6px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 4px 8px rgba(15, 23, 42, 0.06), 0 16px 32px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 8px 16px rgba(15, 23, 42, 0.08), 0 28px 56px rgba(15, 23, 42, 0.16);
 
   /* Extra spacing scale (8pt-aligned extras) */
   --spacing-18: 4.5rem;
@@ -127,6 +161,28 @@
 
 @utility animate-fade-in {
   animation: fade-in 0.35s ease-out forwards;
+}
+
+/* Inspector tab-panel enter: short fade + slide, used by the Print Labels Inspector. */
+@keyframes inspectorTabIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-inspector-tab-in {
+  animation: inspectorTabIn 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-inspector-tab-in {
+    animation: none;
+  }
 }
 
 body {
@@ -237,4 +293,43 @@ section.marketing-band#how-it-works {
 :focus-visible {
   outline: 2px solid var(--color-secondary);
   outline-offset: 2px;
+}
+
+/* Dashboard sidebar route transition (indeterminate top bar). */
+@keyframes nav-route-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.nav-route-progress-bar {
+  animation: nav-route-progress 0.85s ease-in-out infinite;
+}
+
+/* QR Identity metric card — subtle animated stroke sparkline */
+@keyframes qr-spark-stroke {
+  0%,
+  100% {
+    stroke-dashoffset: 22;
+    opacity: 0.55;
+  }
+  50% {
+    stroke-dashoffset: 4;
+    opacity: 1;
+  }
+}
+
+.animate-qr-spark-stroke {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  animation: qr-spark-stroke 2.5s ease-in-out infinite;
+}
+
+/* Label Studio — contain scroll inside workspace columns (avoid page scroll chaining) */
+.label-studio-page-host,
+.label-studio-root {
+  overscroll-behavior-y: contain;
 }

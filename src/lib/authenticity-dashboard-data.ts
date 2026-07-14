@@ -21,6 +21,8 @@ export type AuthenticityMetricId =
   | "successful_scans"
   | "failed_verifications"
   | "active_alerts"
+  | "qr_activations"
+  | "total_scan_events"
 
 export type AuthenticityMetric = {
   id: AuthenticityMetricId

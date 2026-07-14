@@ -1,4 +1,7 @@
+import { summarizeMaterials, summarizeOrigin } from "@/lib/compliance/compliance-field-summaries"
 import { buildProductJsonLd } from "@/lib/dpp-export"
+import type { CategoryKey } from "@/lib/compliance/category-schemas"
+import type { ComplianceData } from "@/lib/compliance/category-compliance-strategy"
 import { patchProductBodySchema } from "@/lib/passport-wizard-schemas"
 import { requireProductOwner } from "@/lib/passport-wizard-product"
 import { createClient } from "@/lib/supabase/server"
@@ -13,7 +16,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   const supabase = await createClient()
   const { data: product, error: pErr } = await supabase
     .from("products")
-    .select("id, name, description, category, origin, metadata, story, materials")
+    .select("id, name, description, category, origin, metadata, story, materials, sku, compliance_category_key, compliance_data, image_url")
     .eq("id", productId)
     .single()
 
@@ -53,6 +56,9 @@ export async function GET(_req: Request, ctx: Ctx) {
       origin: product.origin,
       originCountry,
       originRegion,
+      sku: (product as { sku?: string | null }).sku ?? null,
+      complianceCategoryKey: (product as { compliance_category_key?: string | null }).compliance_category_key ?? null,
+      complianceData: (product as { compliance_data?: ComplianceData | null }).compliance_data ?? {},
     },
     passport: passport
       ? {
@@ -103,7 +109,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
   const { data: current } = await supabase
     .from("products")
-    .select("name, description, category, origin, story, materials, image_url, metadata")
+    .select("name, description, category, origin, story, materials, image_url, metadata, sku, compliance_category_key, compliance_data")
     .eq("id", productId)
     .single()
 
@@ -111,10 +117,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
     return Response.json({ error: "Not found" }, { status: 404 })
   }
 
-  const nextName = body.name?.trim() ?? current.name
+  const nextName = body.name !== undefined ? body.name.trim() : current.name
   const nextDesc = body.description !== undefined ? body.description : current.description
   const nextCat = body.category !== undefined ? body.category : current.category
   const nextOrigin = origin !== undefined ? origin : current.origin
+
+  const storedComplianceKey = (current.compliance_category_key as CategoryKey | null) ?? null
+  const effectiveComplianceKey: CategoryKey | null =
+    body.complianceCategoryKey !== undefined ? body.complianceCategoryKey : storedComplianceKey
+  const prevCompliance = (current.compliance_data as ComplianceData | null) ?? {}
+  const mergedCompliance: ComplianceData =
+    effectiveComplianceKey && body.complianceData
+      ? ({ ...prevCompliance, ...body.complianceData } as ComplianceData)
+      : prevCompliance
 
   const metadata = {
     ...((current.metadata as Record<string, unknown>) || {}),
@@ -126,13 +141,41 @@ export async function PATCH(req: Request, ctx: Ctx) {
       : {}),
   }
 
+  const nextStory =
+    effectiveComplianceKey && body.complianceData
+      ? String(mergedCompliance.product_story ?? "").trim() || null
+      : (current.story as string | null)
+  const nextMaterials =
+    effectiveComplianceKey && body.complianceData
+      ? summarizeMaterials(effectiveComplianceKey, mergedCompliance) || null
+      : (current.materials as string | null)
+  const nextOriginCol =
+    effectiveComplianceKey && body.complianceData
+      ? summarizeOrigin(mergedCompliance) || null
+      : (nextOrigin as string | null)
+  const heroUrl = String(mergedCompliance.hero_image_url ?? "").trim()
+  const nextImageUrl =
+    effectiveComplianceKey && body.complianceData
+      ? heroUrl || (current.image_url as string | null)
+      : (current.image_url as string | null)
+
+  const jsonLdStory = effectiveComplianceKey
+    ? String(mergedCompliance.product_story ?? "").trim() || null
+    : ((nextDesc as string | null) ?? null)
+  const jsonLdMaterials = effectiveComplianceKey
+    ? summarizeMaterials(effectiveComplianceKey, mergedCompliance) || null
+    : ((current.materials as string | null) ?? null)
+  const jsonLdOrigin = effectiveComplianceKey
+    ? summarizeOrigin(mergedCompliance) || null
+    : ((nextOrigin as string | null) ?? null)
+
   const jsonLd = buildProductJsonLd({
     name: nextName,
-    story: (nextDesc as string | null) ?? null,
-    materials: (current.materials as string | null) ?? null,
-    origin: (nextOrigin as string | null) ?? null,
+    story: jsonLdStory,
+    materials: jsonLdMaterials,
+    origin: jsonLdOrigin,
     lifecycle: null,
-    imageUrl: (current.image_url as string | null) ?? null,
+    imageUrl: (nextImageUrl as string | null) ?? null,
     brandName: profile?.brand_name ?? null,
   })
 
@@ -140,9 +183,44 @@ export async function PATCH(req: Request, ctx: Ctx) {
     name: nextName,
     description: nextDesc,
     category: nextCat,
-    origin: nextOrigin,
+    origin: effectiveComplianceKey && body.complianceData ? nextOriginCol : nextOrigin,
     json_ld: jsonLd,
     metadata,
+  }
+
+  if (body.sku !== undefined) {
+    updatePayload.sku = body.sku
+  }
+
+  if (body.complianceCategoryKey !== undefined) {
+    updatePayload.compliance_category_key = body.complianceCategoryKey
+  }
+
+  if (effectiveComplianceKey && body.complianceData) {
+    updatePayload.compliance_data = mergedCompliance
+    updatePayload.story = nextStory
+    updatePayload.materials = nextMaterials
+    updatePayload.origin = nextOriginCol
+    updatePayload.image_url = nextImageUrl
+  }
+
+  if (body.issuanceRemediation) {
+    const remediatedCompliance = {
+      ...((updatePayload.compliance_data as ComplianceData | undefined) ?? prevCompliance),
+    }
+    const irOrigin = body.issuanceRemediation.originCountry?.trim()
+    const irHero = body.issuanceRemediation.heroImageUrl?.trim()
+    if (irOrigin) {
+      remediatedCompliance.origin_country = irOrigin
+      updatePayload.origin = irOrigin
+      ;(metadata as Record<string, unknown>).originCountry = irOrigin
+    }
+    if (irHero) {
+      remediatedCompliance.hero_image_url = irHero
+      updatePayload.image_url = irHero
+    }
+    updatePayload.compliance_data = remediatedCompliance
+    updatePayload.metadata = metadata
   }
 
   const { error } = await supabase.from("products").update(updatePayload as never).eq("id", productId)

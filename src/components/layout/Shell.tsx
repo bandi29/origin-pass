@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { Link } from "@/i18n/navigation"
 import { ShieldCheck } from "lucide-react"
 import { WideContainer } from "@/components/layout/Containers"
@@ -19,7 +20,9 @@ export function SiteHeader({ variant = "narrow" }: { variant?: LayoutVariant }) 
                     OriginPass
                 </Link>
                 <div className="flex items-center gap-3">
-                    <MainNav />
+                    <Suspense fallback={<div className="hidden h-4 w-32 animate-pulse rounded bg-slate-100 lg:block" aria-hidden />}>
+                        <MainNav />
+                    </Suspense>
                     <HeaderAuthStatus />
                 </div>
             </ShellContainer>
@@ -35,7 +38,7 @@ export function SiteFooter({ variant = "narrow" }: { variant?: LayoutVariant }) 
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <p>© {new Date().getFullYear()} OriginPass. All rights reserved.</p>
                     <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
-                        <Link href="/product" className="hover:text-slate-900">
+                        <Link href="/dashboard/product-identity" className="hover:text-slate-900">
                             Product
                         </Link>
                         <Link href="/pricing" className="hover:text-slate-900">

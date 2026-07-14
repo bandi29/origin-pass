@@ -2,7 +2,14 @@ import { createReadStream } from "node:fs"
 import { parse } from "csv-parse"
 import * as XLSX from "xlsx"
 
-import { assertAllowedFile, MAX_ASYNC_FILE_BYTES } from "./parse-file"
+import {
+  assertAllowedFile,
+  CSV_ZIP_MISMATCH_ERROR,
+  isZipMagic,
+  MAX_ASYNC_FILE_BYTES,
+  NUMBERS_EXPORT_HINT,
+} from "./parse-file"
+import { sheetToStringRecordRows } from "./xlsx-smart"
 
 const MAX_ASYNC_ROWS = 200_000
 
@@ -19,7 +26,9 @@ export async function analyzeCsvFile(
   previewLimit = 10,
 ): Promise<SheetMeta | { error: string }> {
   const fs = await import("node:fs/promises")
-  if (!fileName.toLowerCase().endsWith(".csv")) {
+  const lower = fileName.toLowerCase()
+  if (lower.endsWith(".numbers")) return { error: NUMBERS_EXPORT_HINT }
+  if (!lower.endsWith(".csv")) {
     return { error: "Streaming analysis expects a .csv file." }
   }
   const st = await fs.stat(absPath)
@@ -27,6 +36,15 @@ export async function analyzeCsvFile(
   if (st.size > MAX_ASYNC_FILE_BYTES) {
     return { error: `File exceeds ${Math.round(MAX_ASYNC_FILE_BYTES / (1024 * 1024))}MB limit.` }
   }
+
+  const head = Buffer.alloc(4)
+  const fh = await fs.open(absPath, "r")
+  try {
+    await fh.read(head, 0, 4, 0)
+  } finally {
+    await fh.close()
+  }
+  if (isZipMagic(head)) return { error: CSV_ZIP_MISMATCH_ERROR }
 
   try {
     const stream = createReadStream(absPath, { encoding: "utf8" })
@@ -63,7 +81,10 @@ export async function analyzeCsvFile(
     }
 
     if (!headers?.length || total === 0) {
-      return { error: "No data rows found in CSV." }
+      return {
+        error:
+          "No data rows found in CSV. If this file is from Apple Numbers, use File → Export To → CSV (or Excel) — do not rename a .numbers file to .csv.",
+      }
     }
     return { headers, totalRows: total, preview }
   } catch (e) {
@@ -80,27 +101,15 @@ export function analyzeXlsxBuffer(fileName: string, buf: Buffer): SheetMeta | { 
   const sheetName = wb.SheetNames[0]
   if (!sheetName) return { error: "Excel workbook has no sheets." }
   const sheet = wb.Sheets[sheetName]
-  const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" })
-  if (!json.length) return { error: "First sheet is empty." }
-  const headers = Object.keys(json[0]!).map((k) => k.trim()).filter(Boolean)
+  const { headers, rows } = sheetToStringRecordRows(sheet)
   if (!headers.length) return { error: "Could not read column headers." }
+  if (!rows.length) return { error: "First sheet is empty or has no data rows after the header." }
 
-  const rows = json.slice(0, MAX_ASYNC_ROWS).map((r) => {
-    const o: Record<string, string> = {}
-    for (const h of headers) {
-      const v = r[h]
-      if (v == null) o[h] = ""
-      else if (typeof v === "number" || typeof v === "boolean") o[h] = String(v)
-      else if (v instanceof Date) o[h] = v.toISOString().slice(0, 10)
-      else o[h] = String(v).trim()
-    }
-    return o
-  })
-
+  const capped = rows.slice(0, MAX_ASYNC_ROWS)
   return {
     headers,
-    totalRows: rows.length,
-    preview: rows.slice(0, 10),
+    totalRows: capped.length,
+    preview: capped.slice(0, 10),
   }
 }
 

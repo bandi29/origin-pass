@@ -5,6 +5,10 @@ import { findPassportByTokenOrSerial } from "@/backend/modules/passports/reposit
 import type { PassportRecord } from "@/backend/modules/passports/repository"
 import { isValidVerifyToken } from "@/lib/verify-token"
 import { isValidSerialId, isValidUuid } from "@/lib/security"
+import {
+  persistVerificationOutputs,
+  runVerificationOrchestrator,
+} from "@/backend/modules/verification-engine"
 
 export type ClaimOwnershipInput = {
   tokenOrSerial: string
@@ -102,6 +106,54 @@ export async function claimOwnership(
   if (error) {
     console.warn("claimOwnership error:", error.message)
     return { success: false, error: error.message }
+  }
+
+  if (passport.product_id) {
+    try {
+      const { data: product } = await admin
+        .from("products")
+        .select("id, sku, serial_number, origin_country, supplier_id, risk_score")
+        .eq("id", passport.product_id)
+        .maybeSingle()
+
+      const orchestrator = await runVerificationOrchestrator(
+        {
+          supabase: admin,
+          organizationId,
+          actor: input.userId ?? "system",
+        },
+        {
+          currentRiskScore: Number(product?.risk_score ?? 0),
+          product: {
+            productId: passport.product_id,
+            sku: product?.sku ?? null,
+            serialNumber: product?.serial_number ?? null,
+            originCountry: product?.origin_country ?? null,
+            supplierId: product?.supplier_id ?? null,
+          },
+        },
+      )
+
+      await persistVerificationOutputs(
+        {
+          supabase: admin,
+          organizationId,
+          actor: input.userId ?? "system",
+        },
+        passport.product_id,
+        orchestrator,
+      )
+
+      await admin
+        .from("products")
+        .update({
+          risk_score: orchestrator.riskAfter,
+          verification_status: orchestrator.status,
+        })
+        .eq("id", passport.product_id)
+    } catch (verificationError) {
+      console.warn("ownership verification orchestrator skipped:", verificationError)
+    }
   }
 
   return {

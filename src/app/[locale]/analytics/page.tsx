@@ -7,7 +7,6 @@ import {
   getFraudDistribution,
   getTopProducts,
   getOwnershipOverTime,
-  getFraudAlerts,
   type AnalyticsFilters,
   type DateRangePreset,
 } from "@/backend/modules/analytics/dashboard"
@@ -37,7 +36,6 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
     fraudDistribution,
     topProducts,
     ownershipOverTime,
-    fraudAlerts,
   ] = await Promise.all([
     getAnalyticsKpis(userId, filters),
     getScansOverTime(userId, filters),
@@ -45,7 +43,6 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
     getFraudDistribution(userId, filters),
     getTopProducts(userId, filters),
     getOwnershipOverTime(userId, filters),
-    getFraudAlerts(userId, filters),
   ])
 
   return (
@@ -57,7 +54,6 @@ export default async function AnalyticsPage({ searchParams }: PageProps) {
       fraudDistribution={fraudDistribution}
       topProducts={topProducts}
       ownershipOverTime={ownershipOverTime}
-      fraudAlerts={fraudAlerts}
     />
   )
 }

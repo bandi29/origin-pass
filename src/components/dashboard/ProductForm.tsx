@@ -10,6 +10,7 @@ import { Loader2, ShieldCheck, CheckCircle2, AlertCircle, Circle, Eye, ArrowRigh
 import { PassportPagePreviewCard } from "@/components/passports/PassportPagePreviewCard"
 import { PhotoToPassportCard } from "@/components/dashboard/PhotoToPassportCard"
 import { FieldTooltip } from "@/components/ui/FieldTooltip"
+import { StudioNativeSelect } from "@/components/ui/StudioNativeSelect"
 import { useRouter } from "@/i18n/navigation"
 
 const COMMON_MATERIALS = [
@@ -41,7 +42,7 @@ import { loadDraft, saveDraft, clearDraft, type ProductFormDraft } from "@/lib/p
 
 const DEBUG_PRODUCT_FORM = process.env.NODE_ENV !== "production"
 
-export default function ProductForm() {
+export default function ProductForm({ hidePhotoAiAssist = false }: { hidePhotoAiAssist?: boolean } = {}) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -69,6 +70,8 @@ export default function ProductForm() {
   const [imageUrl, setImageUrl] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  // Strict, submission-blocking errors for EU DPP-mandatory fields.
+  const [errors, setErrors] = useState<{ origin?: boolean; image?: boolean }>({})
   const [fieldHints, setFieldHints] = useState<{ sustainability?: string; lifecycle?: string }>({})
   const [pendingDraft, setPendingDraft] = useState<ProductFormDraft | null>(null)
   const [citySuggestions, setCitySuggestions] = useState<string[]>([])
@@ -416,6 +419,20 @@ export default function ProductForm() {
       lifecycle: !hasLifecycle ? "Lifecycle data improves EU DPP compliance score." : undefined,
     })
 
+    // STRICT validation: Origin (country) and Hero Image are mandatory for EU DPP
+    // compliance and QR label generation. Block submit and highlight the inputs.
+    const originCountryDisplay = originCountry === "Other" ? originOther.trim() : originCountry
+    // Matches the server's `origin` check (country/state/city build one string).
+    const hasOriginStrict = Boolean(originCountryDisplay || originState.trim() || originCity.trim())
+    const hasImageStrict = Boolean(imageUrl.trim())
+    if (!hasOriginStrict || !hasImageStrict) {
+      setErrors({ origin: !hasOriginStrict, image: !hasImageStrict })
+      setMessage("Add the required compliance fields highlighted in red before saving.")
+      scrollToSection(!hasImageStrict ? "basic" : "sustainability")
+      return
+    }
+    setErrors({})
+
     setLoading(true)
     setMessage(null)
 
@@ -559,7 +576,7 @@ export default function ProductForm() {
           </button>
           <button
             type="button"
-            onClick={() => { scrollToSection("sustainability"); (sustainabilityRef.current?.querySelector("details") as HTMLDetailsElement)?.setAttribute("open", ""); }}
+            onClick={() => scrollToSection("sustainability")}
             className={`flex items-center gap-2 text-left w-full py-1 px-2 -mx-2 rounded-lg transition hover:bg-slate-100 ${
               completion.sustainability === "complete"
                 ? "text-emerald-700"
@@ -579,7 +596,7 @@ export default function ProductForm() {
           </button>
           <button
             type="button"
-            onClick={() => { scrollToSection("lifecycle"); (sustainabilityRef.current?.querySelector("details") as HTMLDetailsElement)?.setAttribute("open", ""); }}
+            onClick={() => scrollToSection("lifecycle")}
             className={`flex items-center gap-2 text-left w-full py-1 px-2 -mx-2 rounded-lg transition hover:bg-slate-100 ${
               completion.lifecycle === "complete"
                 ? "text-emerald-700"
@@ -613,10 +630,12 @@ export default function ProductForm() {
         </div>
       </div>
 
-      <PhotoToPassportCard
-        getCurrentDraft={getCurrentDraftForAi}
-        onApplyDraft={applyImportedPhotoDraft}
-      />
+      {!hidePhotoAiAssist ? (
+        <PhotoToPassportCard
+          getCurrentDraft={getCurrentDraftForAi}
+          onApplyDraft={applyImportedPhotoDraft}
+        />
+      ) : null}
 
       {pendingDraft && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -666,8 +685,10 @@ export default function ProductForm() {
             className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Product Image (Optional)</label>
+        <div className={`space-y-2 ${errors.image ? "rounded-xl ring-2 ring-rose-400 ring-offset-2 p-3 -m-3" : ""}`}>
+          <label className="text-sm font-medium text-gray-700">
+            Product Image / Hero Media <span className="text-rose-500" aria-hidden>*</span>
+          </label>
           <p className="text-xs text-slate-500">
             Upload from your device or provide an image URL. Max file size: 10MB.
             Recommended: JPG/PNG/WebP around 1-4MB for faster upload.
@@ -771,6 +792,7 @@ export default function ProductForm() {
                       }
                       setImageUrl(res.url)
                       setImagePreview(res.url)
+                      setErrors((p) => ({ ...p, image: false }))
                       const state = formStateRef.current
                       saveDraft({
                         productName: state.productName,
@@ -853,9 +875,12 @@ export default function ProductForm() {
                 const v = e.target.value
                 setImageUrl(v)
                 setImagePreview(v ? v : null)
+                if (v.trim()) setErrors((p) => ({ ...p, image: false }))
               }}
               placeholder="https://..."
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
+              className={`w-full px-4 py-2 rounded-lg border outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 ${
+                errors.image ? "border-rose-400" : "border-gray-300"
+              }`}
             />
           )}
           {imagePreview && imageMode === "url" && isSafeImageUrl(imagePreview) && (
@@ -877,270 +902,266 @@ export default function ProductForm() {
             </div>
           )}
           {imageMode === "upload" && <input type="hidden" name="imageUrl" value={imageUrl} />}
+          <p className={`text-xs ${errors.image ? "font-medium text-rose-600" : "text-slate-500"}`}>
+            Required for EU DPP compliance and secure QR label generation.
+          </p>
         </div>
       </div>
       </div>
 
-      {/* 2. Compliance & Sustainability Details - no "optional" in label */}
+      {/* Compliance & sustainability — single card, materials first for quick entry */}
       <div ref={sustainabilityRef}>
-      <details
-        className={`rounded-xl border px-4 py-3 transition-colors ${
-          completion.sustainability !== "complete" ? "border-amber-200 bg-amber-50/30" : "border-slate-200 bg-slate-50 open:bg-slate-50/80"
-        }`}
-        open
-      >
-        <summary className="cursor-pointer text-sm font-semibold text-slate-800 flex items-center gap-2 py-1">
-          Compliance & Sustainability Details
-        </summary>
-        <div className="pt-4 space-y-5">
-          {fieldHints.sustainability && (
-            <p className="flex items-center gap-2 text-amber-700 text-sm bg-amber-100/80 px-3 py-2 rounded-lg">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {fieldHints.sustainability}
-            </p>
-          )}
-          {/* Required vs optional legend */}
-          <div className="flex flex-wrap gap-4 text-xs">
-            <span className="flex items-center gap-1.5">
-              <span className="text-rose-500">*</span> Required for EU DPP
-            </span>
-            <span className="flex items-center gap-1.5 text-slate-500">
-              (optional) Nice to have
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Story</label>
-            <span className="text-xs text-slate-400 ml-1">(optional)</span>
-            <textarea
-              name="story"
-              rows={3}
-              value={story}
-              onChange={(e) => setStory(e.target.value)}
-              placeholder="Short craftsmanship story"
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
-            />
-          </div>
-
-          {/* 3. Materials with tooltip */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-              Materials
-              <FieldTooltip
-                label="Materials"
-                description="Primary materials used in this product."
-                whyMatters="EU DPP requires material composition for transparency and recyclability assessment."
-              />
-            </label>
-            <span className="text-xs text-slate-500 block">Select all that apply, or add custom below</span>
-            <div className="flex flex-wrap gap-2">
-              {COMMON_MATERIALS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => toggleMaterial(m)}
-                  className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-                    selectedMaterials.includes(m)
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
+        <section
+          className={`rounded-xl border bg-white p-5 shadow-sm transition-colors ${
+            completion.sustainability !== "complete" ? "border-amber-200 ring-1 ring-amber-100/80" : "border-slate-200"
+          }`}
+        >
+          <h3 className="text-sm font-semibold text-slate-900">Compliance & Sustainability Details</h3>
+          <div className="mt-4 space-y-5">
+            {fieldHints.sustainability && (
+              <p className="flex items-center gap-2 rounded-lg bg-amber-100/80 px-3 py-2 text-sm text-amber-700">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {fieldHints.sustainability}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-4 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="text-rose-500">*</span> Required for EU DPP
+              </span>
+              <span className="flex items-center gap-1.5 text-slate-500">(optional) Nice to have</span>
             </div>
-            <input
-              type="text"
-              value={materialsOther}
-              onChange={(e) => setMaterialsOther(e.target.value)}
-              placeholder="Other materials (e.g. brass hardware)"
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400 mt-2"
-            />
-          </div>
 
-          {/* Origin with tooltip */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <label htmlFor="origin-country" className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-                Country
+              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                Materials
                 <FieldTooltip
-                  label="Country"
-                  description="Where the product was made or assembled."
-                  whyMatters="Origin disclosure is mandatory under EU DPP for supply chain transparency."
+                  label="Materials"
+                  description="Primary materials used in this product."
+                  whyMatters="EU DPP requires material composition for transparency and recyclability assessment."
                 />
               </label>
-              <select
-                id="origin-country"
-                value={originCountry}
-                onChange={(e) => {
-                  const nextCountry = e.target.value
-                  setOriginCountry(nextCountry)
-                  setOriginState("")
-                  setOriginCity("")
-                  setCitySuggestions([])
-                  setShowCitySuggestions(false)
-                  if (nextCountry !== "Other") {
-                    setOriginOther("")
-                  }
-                }}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
-              >
-                <option value="">Select country…</option>
-                {countryOptions.map((country) => (
-                  <option key={country.isoCode} value={country.name}>{country.name}</option>
+              <span className="block text-xs text-slate-500">Select all that apply, or add custom below</span>
+              <div className="flex flex-wrap gap-2">
+                {COMMON_MATERIALS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => toggleMaterial(m)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                      selectedMaterials.includes(m)
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    {m}
+                  </button>
                 ))}
-                <option value="Other">Other</option>
-              </select>
-              {originCountry === "Other" && (
-                <input
-                  type="text"
-                  value={originOther}
-                  onChange={(e) => setOriginOther(e.target.value)}
-                  placeholder="Enter country name"
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400 mt-2"
-                />
-              )}
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="origin-state" className="text-sm font-medium text-gray-700">State / Region</label>
-              <span className="text-xs text-slate-400 ml-1">(optional)</span>
-              {originCountry && originCountry !== "Other" && stateOptions.length > 0 ? (
-                <select
-                  id="origin-state"
-                  value={originState}
-                  onChange={(e) => {
-                    setOriginState(e.target.value)
-                    setShowCitySuggestions(false)
-                  }}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
-                >
-                  <option value="">Select state/region…</option>
-                  {stateOptions.map((state) => (
-                    <option key={state} value={state}>{state}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  id="origin-state"
-                  value={originState}
-                  onChange={(e) => {
-                    setOriginState(e.target.value)
-                    setShowCitySuggestions(false)
-                  }}
-                  placeholder={originCountry ? "Enter state/region" : "Select country first"}
-                  disabled={!originCountry}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400 disabled:bg-slate-50 disabled:text-slate-400"
-                />
-              )}
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="origin-city" className="text-sm font-medium text-gray-700">City / Place</label>
-              <span className="text-xs text-slate-400 ml-1">(optional)</span>
+              </div>
               <input
-                id="origin-city"
                 type="text"
-                value={originCity}
-                onChange={(e) => {
-                  setOriginCity(e.target.value)
-                  setShowCitySuggestions(true)
-                }}
-                onFocus={() => setShowCitySuggestions(true)}
-                placeholder="e.g. Florence"
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
+                value={materialsOther}
+                onChange={(e) => setMaterialsOther(e.target.value)}
+                placeholder="Other materials (e.g. brass hardware)"
+                className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300"
               />
-              {loadingCitySuggestions && (
-                <p className="text-xs text-slate-500">Loading city suggestions…</p>
-              )}
-              {cityLookupMessage && (
-                <p className="text-xs text-amber-700">{cityLookupMessage}</p>
-              )}
-              {showCitySuggestions && citySuggestions.length > 0 && (
-                <div className="rounded-lg border border-slate-200 bg-white shadow-sm max-h-40 overflow-auto">
-                  {citySuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        setOriginCity(suggestion)
-                        setShowCitySuggestions(false)
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-slate-500">
-                Optional autocomplete. You can always type city/place manually.
-              </p>
             </div>
-          </div>
 
-          {/* Lifecycle with tooltip - structured inputs */}
-          <div
-            ref={lifecycleRef}
-            className={`space-y-2 p-4 rounded-xl transition-colors ${
-              completion.lifecycle !== "complete" ? "bg-amber-50/50 border border-amber-100" : ""
-            }`}
-          >
-            <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-              Lifecycle
-              <FieldTooltip
-                label="Lifecycle"
-                description="Repairability, expected lifespan, and recyclability."
-                whyMatters="EU DPP requires circularity information for end-of-life and repair decisions."
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Story <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <textarea
+                name="story"
+                rows={3}
+                value={story}
+                onChange={(e) => setStory(e.target.value)}
+                placeholder="Short craftsmanship story"
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300"
               />
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <span className="text-xs text-slate-500">Repairable</span>
-                <select
-                  value={repairable}
-                  onChange={(e) => setRepairable(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <label htmlFor="origin-country" className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  Country <span className="text-rose-500" aria-hidden>*</span>
+                  <FieldTooltip
+                    label="Country"
+                    description="Where the product was made or assembled."
+                    whyMatters="Origin disclosure is mandatory under EU DPP for supply chain transparency."
+                  />
+                </label>
+                <StudioNativeSelect
+                  id="origin-country"
+                  value={originCountry}
+                  wrapClassName={errors.origin ? "rounded-lg ring-2 ring-rose-400" : undefined}
+                  onChange={(e) => {
+                    const nextCountry = e.target.value
+                    setOriginCountry(nextCountry)
+                    setOriginState("")
+                    setOriginCity("")
+                    setCitySuggestions([])
+                    setShowCitySuggestions(false)
+                    if (nextCountry !== "Other") {
+                      setOriginOther("")
+                    }
+                    if (nextCountry && nextCountry !== "Other") setErrors((p) => ({ ...p, origin: false }))
+                  }}
                 >
-                  <option value="">—</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <span className="text-xs text-slate-500">Expected lifespan</span>
-                <select
-                  value={lifespan}
-                  onChange={(e) => setLifespan(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
-                >
-                  {LIFESPAN_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  <option value="">Select country…</option>
+                  {countryOptions.map((country) => (
+                    <option key={country.isoCode} value={country.name}>
+                      {country.name}
+                    </option>
                   ))}
-                </select>
+                  <option value="Other">Other</option>
+                </StudioNativeSelect>
+                {originCountry === "Other" && (
+                  <input
+                    type="text"
+                    value={originOther}
+                    onChange={(e) => {
+                      setOriginOther(e.target.value)
+                      if (e.target.value.trim()) setErrors((p) => ({ ...p, origin: false }))
+                    }}
+                    placeholder="Enter country name"
+                    aria-invalid={errors.origin || undefined}
+                    className={`mt-2 w-full rounded-lg border bg-white px-4 py-2 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300 ${
+                      errors.origin ? "border-rose-400" : "border-gray-300"
+                    }`}
+                  />
+                )}
+                <p className={`text-xs ${errors.origin ? "font-medium text-rose-600" : "text-slate-500"}`}>
+                  Required for EU DPP compliance and secure QR label generation.
+                </p>
               </div>
-              <div className="space-y-1.5">
-                <span className="text-xs text-slate-500">Recyclable</span>
-                <select
-                  value={recyclable}
-                  onChange={(e) => setRecyclable(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none bg-white focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
-                >
-                  <option value="">—</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
+              <div className="space-y-2">
+                <label htmlFor="origin-state" className="text-sm font-medium text-gray-700">
+                  State / Region <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                {originCountry && originCountry !== "Other" && stateOptions.length > 0 ? (
+                  <StudioNativeSelect
+                    id="origin-state"
+                    value={originState}
+                    onChange={(e) => {
+                      setOriginState(e.target.value)
+                      setShowCitySuggestions(false)
+                    }}
+                  >
+                    <option value="">Select state/region…</option>
+                    {stateOptions.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </StudioNativeSelect>
+                ) : (
+                  <input
+                    type="text"
+                    id="origin-state"
+                    value={originState}
+                    onChange={(e) => {
+                      setOriginState(e.target.value)
+                      setShowCitySuggestions(false)
+                    }}
+                    placeholder={originCountry ? "Enter state/region" : "Select country first"}
+                    disabled={!originCountry}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:bg-slate-50 disabled:text-slate-400"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="origin-city" className="text-sm font-medium text-gray-700">
+                  City / Place <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <input
+                  id="origin-city"
+                  type="text"
+                  value={originCity}
+                  onChange={(e) => {
+                    setOriginCity(e.target.value)
+                    setShowCitySuggestions(true)
+                  }}
+                  onFocus={() => setShowCitySuggestions(true)}
+                  placeholder="e.g. Florence"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300"
+                />
+                {loadingCitySuggestions && <p className="text-xs text-slate-500">Loading city suggestions…</p>}
+                {cityLookupMessage && <p className="text-xs text-amber-700">{cityLookupMessage}</p>}
+                {showCitySuggestions && citySuggestions.length > 0 && (
+                  <div className="max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                    {citySuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setOriginCity(suggestion)
+                          setShowCitySuggestions(false)
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-slate-500">
+                  Optional autocomplete. You can always type city/place manually.
+                </p>
               </div>
             </div>
-          {fieldHints.lifecycle && (
-            <p className="flex items-center gap-2 text-amber-700 text-sm bg-amber-100/80 px-3 py-2 rounded-lg mt-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {fieldHints.lifecycle}
-            </p>
-          )}
+
+            <div
+              ref={lifecycleRef}
+              className={`space-y-3 rounded-xl p-4 transition-colors ${
+                completion.lifecycle !== "complete" ? "border border-amber-100 bg-amber-50/50" : "border border-slate-100 bg-slate-50/40"
+              }`}
+            >
+              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                Lifecycle
+                <FieldTooltip
+                  label="Lifecycle"
+                  description="Repairability, expected lifespan, and recyclability."
+                  whyMatters="EU DPP requires circularity information for end-of-life and repair decisions."
+                />
+              </label>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <span className="text-xs text-slate-500">Repairable</span>
+                  <StudioNativeSelect value={repairable} onChange={(e) => setRepairable(e.target.value)}>
+                    <option value="">—</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </StudioNativeSelect>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-xs text-slate-500">Expected lifespan</span>
+                  <StudioNativeSelect value={lifespan} onChange={(e) => setLifespan(e.target.value)}>
+                    {LIFESPAN_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </StudioNativeSelect>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-xs text-slate-500">Recyclable</span>
+                  <StudioNativeSelect value={recyclable} onChange={(e) => setRecyclable(e.target.value)}>
+                    <option value="">—</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </StudioNativeSelect>
+                </div>
+              </div>
+              {fieldHints.lifecycle && (
+                <p className="mt-2 flex items-center gap-2 rounded-lg bg-amber-100/80 px-3 py-2 text-sm text-amber-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {fieldHints.lifecycle}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      </details>
+        </section>
       </div>
 
       {/* CTA area: Save Draft + Create & Continue */}

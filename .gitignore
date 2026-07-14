@@ -44,3 +44,7 @@ next-env.d.ts
 
 # local async import file storage
 .data/
+
+# Shopify CLI local state
+.shopify/
+.shopify.lock

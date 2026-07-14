@@ -62,13 +62,16 @@ export async function recordShareClick(input: {
     return
   }
 
-  const { data: row } = await admin
-    .from("share_events")
-    .select("clicks")
-    .eq("id", input.shareId)
-    .single()
-  const next = (typeof row?.clicks === "number" ? row.clicks : 0) + 1
-  await admin.from("share_events").update({ clicks: next }).eq("id", input.shareId)
+  // Atomic single-statement increment via SQL function. Replaces the previous
+  // read-modify-write which lost increments under concurrent viral-share traffic.
+  const { error: rpcErr } = await admin.rpc("increment_share_event_clicks", {
+    p_share_id: input.shareId,
+  })
+  if (rpcErr) {
+    // Counter cache is a denormalized convenience — share_clicks is the source of truth.
+    // We tolerate the failure and let `getShareAnalytics` recompute from share_clicks.
+    console.warn("recordShareClick increment:", rpcErr.message)
+  }
 }
 
 export async function getShareAnalytics(passportId: string): Promise<{
@@ -78,36 +81,34 @@ export async function getShareAnalytics(passportId: string): Promise<{
 }> {
   const admin = createAdminClient()
 
-  const { data: events, error: evErr } = await admin
-    .from("share_events")
-    .select("channel, clicks")
-    .eq("passport_id", passportId)
+  // Single SQL round-trip via the SQL function: returns one row per channel with
+  // events_count + clicks_count. Avoids selecting every share_events row and the
+  // previous N+1 per-row scan.
+  const { data, error } = await admin.rpc("get_share_click_counts", {
+    p_passport_id: passportId,
+  })
 
-  if (evErr) {
-    console.warn("getShareAnalytics events:", evErr.message)
+  if (error) {
+    console.warn("getShareAnalytics:", error.message)
   }
 
-  const channels: Record<ShareChannel, number> = {
-    whatsapp: 0,
-    email: 0,
-    direct: 0,
-  }
-  const clicks: Record<ShareChannel, number> = {
-    whatsapp: 0,
-    email: 0,
-    direct: 0,
-  }
+  const channels: Record<ShareChannel, number> = { whatsapp: 0, email: 0, direct: 0 }
+  const clicks: Record<ShareChannel, number> = { whatsapp: 0, email: 0, direct: 0 }
+  let total = 0
 
-  for (const row of events ?? []) {
+  for (const row of (data ?? []) as Array<{
+    channel: string
+    events_count: number | string
+    clicks_count: number | string
+  }>) {
     const ch = row.channel as ShareChannel
+    const ev = Number(row.events_count) || 0
+    const cl = Number(row.clicks_count) || 0
+    total += ev
     if (!(ch in channels)) continue
-    channels[ch]++
-    clicks[ch] += typeof row.clicks === "number" ? row.clicks : 0
+    channels[ch] = ev
+    clicks[ch] = cl
   }
 
-  return {
-    totalShares: events?.length ?? 0,
-    channels,
-    clicks,
-  }
+  return { totalShares: total, channels, clicks }
 }

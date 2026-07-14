@@ -214,12 +214,29 @@ describe("ProductForm", () => {
     expect(screen.getByLabelText(/City \/ Place/i)).toHaveValue("Florence")
   })
 
+  it("blocks Create & Continue when Origin or image are missing", async () => {
+    const user = userEvent.setup()
+    render(<ProductForm />)
+    await user.type(screen.getByPlaceholderText(/Handcrafted Leather/i), "No Compliance Product")
+    await user.click(screen.getByRole("button", { name: /Create & Continue/i }))
+
+    expect(
+      await screen.findByText(/required compliance fields highlighted in red/i),
+    ).toBeInTheDocument()
+    expect(vi.mocked(createProduct)).not.toHaveBeenCalled()
+  })
+
   it("does not clear draft after successful Create & Continue", async () => {
     const user = userEvent.setup()
     vi.mocked(createProduct).mockResolvedValue({ success: true, productId: "prod-1" })
 
     render(<ProductForm />)
     await user.type(screen.getByPlaceholderText(/Handcrafted Leather/i), "Draft Keep Product")
+    // Satisfy strict EU DPP validation: Origin (any part) + image are required.
+    await user.type(screen.getByLabelText(/City \/ Place/i), "Florence")
+    await user.click(screen.getByRole("button", { name: /Add image URL/i }))
+    await user.type(screen.getByPlaceholderText(/https/i), "https://example.com/p.jpg")
+
     await user.click(screen.getByRole("button", { name: /Create & Continue/i }))
 
     await waitFor(() => {

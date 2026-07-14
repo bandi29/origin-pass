@@ -1,9 +1,11 @@
 import { spacing } from "@/design-system/tokens"
 import { createClient } from "@/lib/supabase/server"
-import CategoryAwareProductForm from "@/components/dashboard/CategoryAwareProductForm"
-import ProductForm from "@/components/dashboard/ProductForm"
+import AddProductWorkspace from "@/components/dashboard/AddProductWorkspace"
 import { Package, ChevronDown } from "lucide-react"
 import { Link } from "@/i18n/navigation"
+import clsx from "clsx"
+
+export const dynamic = "force-dynamic"
 
 /** Stable across SSR + browser (avoids locale/timezone hydration mismatches). */
 function formatProductDate(iso: string | null) {
@@ -18,25 +20,56 @@ function formatProductDate(iso: string | null) {
     })
 }
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ focusAi?: string; imported?: string; importLogId?: string }>
+}) {
+    const { focusAi, imported, importLogId } = await searchParams
+    const autoTriggerAiUpload = focusAi === "1"
+    const showImportedLanding = imported === "1"
+    const highlightImportLogId = importLogId?.trim() || null
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) return null
 
-    let products: { id: string; name: string; origin?: string | null; materials?: string | null; created_at: string | null }[] = []
+    let products: {
+        id: string
+        name: string
+        origin?: string | null
+        materials?: string | null
+        created_at: string | null
+        updated_at?: string | null
+        import_log_id?: string | null
+    }[] = []
 
     try {
+        const { data: membership } = await supabase
+            .from("users")
+            .select("organization_id")
+            .eq("id", user.id)
+            .maybeSingle()
+
+        const orgId = membership?.organization_id as string | null | undefined
+        const visibilityOr = [`brand_id.eq.${user.id}`]
+        if (orgId) visibilityOr.push(`organization_id.eq.${orgId}`)
+
         const { data } = await supabase
             .from('products')
-            .select('id, name, origin, materials, created_at')
-            .or(`brand_id.eq.${user.id},organization_id.eq.${user.id}`)
+            .select('id, name, origin, materials, created_at, updated_at, import_log_id')
+            .or(visibilityOr.join(","))
             .eq('is_archived', false)
+            .order('updated_at', { ascending: false, nullsFirst: false })
             .order('created_at', { ascending: false })
         products = data ?? []
     } catch (error) {
         console.error('Products fetch error:', error)
     }
+
+    const importedFromLatestRun = highlightImportLogId
+        ? products.filter((product) => product.import_log_id === highlightImportLogId)
+        : []
 
     return (
         <div className={spacing.pageStack}>
@@ -50,28 +83,21 @@ export default async function ProductsPage() {
                     <Package className="w-5 h-5 text-slate-400" />
                     Add New Product
                 </h2>
-                <CategoryAwareProductForm />
-                <div className="mt-6 grid gap-2 sm:grid-cols-2">
-                    <Link href="/dashboard/products/passport-wizard" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Product passport wizard</Link>
-                    <Link href="/dashboard/products/import-products" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Import Products</Link>
+                <AddProductWorkspace autoTriggerAiUpload={autoTriggerAiUpload} />
+                <div className="mt-6 border-t border-slate-100 pt-6">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Bulk</p>
+                    <Link
+                        href="/dashboard/products/import-products"
+                        className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-white"
+                    >
+                        Import products (CSV)
+                    </Link>
                 </div>
-                <details className="mt-8 rounded-xl border border-slate-200/80 bg-slate-50/40">
-                    <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 list-none [&::-webkit-details-marker]:hidden flex items-center justify-between">
-                        <span>Details</span>
-                        <span className="text-xs font-normal text-slate-400">Legacy materials &amp; lifecycle form</span>
-                    </summary>
-                    <div className="border-t border-slate-100 px-4 pb-4 pt-2">
-                        <p className="text-xs text-slate-500 mb-4">
-                            Original step-by-step creator (non–category-strategy). Prefer the category form above for compliance JSONB mapping.
-                        </p>
-                        <ProductForm />
-                    </div>
-                </details>
             </div>
 
             {/* Divider + lighter visual weight for product list */}
             <div className="border-t border-slate-200 pt-8">
-                <details className="group">
+                <details className="group" open={showImportedLanding || undefined}>
                     <summary className="cursor-pointer list-none flex items-center justify-between py-2 text-slate-600 hover:text-slate-900 transition [&::-webkit-details-marker]:hidden">
                         <span className="text-sm font-medium flex items-center gap-2">
                             <ChevronDown className="w-4 h-4 transition group-open:rotate-180" />
@@ -79,6 +105,27 @@ export default async function ProductsPage() {
                         </span>
                         <span className="text-xs text-slate-400">{products.length} product{products.length !== 1 ? 's' : ''}</span>
                     </summary>
+                    {showImportedLanding ? (
+                        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+                            {importedFromLatestRun.length > 0 ? (
+                                <p>
+                                    <span className="font-semibold text-emerald-900">
+                                        {importedFromLatestRun.length} product
+                                        {importedFromLatestRun.length === 1 ? "" : "s"}
+                                    </span>{" "}
+                                    from your latest import {importedFromLatestRun.length === 1 ? "is" : "are"} highlighted below.
+                                    {importedFromLatestRun.length < products.length
+                                        ? " Existing SKUs were updated in place rather than duplicated."
+                                        : null}
+                                </p>
+                            ) : (
+                                <p>
+                                    Import finished. If rows matched existing SKUs, those catalog records were updated in place.
+                                    Expand the list below or search by product name.
+                                </p>
+                            )}
+                        </div>
+                    ) : null}
                     <p className="mt-2 text-xs text-slate-500">
                         Tip: each product includes 4 detail views — Product Info, Passport Template, QR Codes, and Scan History.
                     </p>
@@ -89,8 +136,20 @@ export default async function ProductsPage() {
                             </div>
                         ) : (
                             <div className="divide-y divide-slate-100">
-                                {products.map((product) => (
-                                    <div key={product.id} className="p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-white/60 transition">
+                                {products.map((product) => {
+                                    const isFromLatestImport =
+                                        Boolean(highlightImportLogId) &&
+                                        product.import_log_id === highlightImportLogId
+                                    return (
+                                    <div
+                                        key={product.id}
+                                        className={clsx(
+                                            "p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 transition",
+                                            isFromLatestImport
+                                                ? "bg-emerald-50/80 hover:bg-emerald-50"
+                                                : "hover:bg-white/60",
+                                        )}
+                                    >
                                         <div>
                                             <Link href={`/dashboard/products/${product.id}/product-info`} className="text-sm font-medium text-slate-700 hover:text-slate-900">
                                                 {product.name}
@@ -117,7 +176,8 @@ export default async function ProductsPage() {
                                             {formatProductDate(product.created_at)}
                                         </div>
                                     </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         )}
                     </div>

@@ -51,6 +51,18 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
       return { success: false, error: "Product name is required" }
     }
 
+    // Mandatory for EU DPP compliance + secure QR label generation. Enforced here
+    // too (not only client-side) so incomplete records never reach the database.
+    if (!origin) {
+      return { success: false, error: "Origin is required for EU DPP compliance." }
+    }
+    if (!imageUrl) {
+      return {
+        success: false,
+        error: "A product image is required for EU DPP compliance and QR label generation.",
+      }
+    }
+
     const { data: brand } = await supabase
       .from("profiles")
       .select("brand_name")

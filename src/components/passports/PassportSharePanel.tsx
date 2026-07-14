@@ -1,26 +1,46 @@
 "use client"
 
-import { useCallback, useRef, useState } from "react"
-import { Link2, Loader2, Mail, MessageCircle } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Check, Link2, Loader2, Mail, MessageCircle } from "lucide-react"
 import clsx from "clsx"
+import { useOptionalToast } from "@/components/ui/Toast"
 
 type Channel = "whatsapp" | "email" | "direct"
 
 const DEBOUNCE_MS = 800
 
+/** Placeholder URL for template preview / sandbox (no real share tracking). */
+const PREVIEW_SHARE_URL = "https://originpass.com/p/mock-passport-123"
+
+const btnTactile = "transition-transform active:scale-95"
+
 type Props = {
   passportId: string
   productName: string
+  /** Preview inside dashboard modal: sandbox share actions + mock copy URL. */
+  mode?: "live" | "preview"
 }
 
-export function PassportSharePanel({ passportId, productName }: Props) {
+export function PassportSharePanel({ passportId, productName, mode = "live" }: Props) {
+  const isPreview = mode === "preview"
+  const optionalToast = useOptionalToast()
+
   const [busy, setBusy] = useState<Channel | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const copiedResetRef = useRef<number | null>(null)
+
   const lastActionAt = useRef(0)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
     window.setTimeout(() => setToast(null), 2200)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetRef.current) window.clearTimeout(copiedResetRef.current)
+    }
   }, [])
 
   const createTrackedUrl = useCallback(
@@ -37,7 +57,7 @@ export function PassportSharePanel({ passportId, productName }: Props) {
       }
       return typeof data.url === "string" ? data.url : null
     },
-    [passportId, showToast]
+    [passportId, showToast],
   )
 
   const guardDebounce = useCallback(() => {
@@ -47,8 +67,34 @@ export function PassportSharePanel({ passportId, productName }: Props) {
     return true
   }, [])
 
+  const showWhatsAppPreviewToast = useCallback(() => {
+    const title = "WhatsApp Integration Preview"
+    const description =
+      "In live production, this shares a pre-formatted message showcasing your product's craftsmanship details directly to the customer's chats."
+    if (optionalToast) {
+      optionalToast.info(title, description)
+    } else {
+      showToast(`${title} — ${description}`)
+    }
+  }, [optionalToast, showToast])
+
+  const showEmailPreviewToast = useCallback(() => {
+    const title = "Email Sharing Preview"
+    const description =
+      "In live production, this launches the customer's native email app with a beautifully drafted message containing your passport's URL."
+    if (optionalToast) {
+      optionalToast.info(title, description)
+    } else {
+      showToast(`${title} — ${description}`)
+    }
+  }, [optionalToast, showToast])
+
   const handleWhatsApp = async () => {
     if (!guardDebounce()) return
+    if (isPreview) {
+      showWhatsAppPreviewToast()
+      return
+    }
     setBusy("whatsapp")
     try {
       const url = await createTrackedUrl("whatsapp")
@@ -63,6 +109,10 @@ export function PassportSharePanel({ passportId, productName }: Props) {
 
   const handleEmail = async () => {
     if (!guardDebounce()) return
+    if (isPreview) {
+      showEmailPreviewToast()
+      return
+    }
     setBusy("email")
     try {
       const url = await createTrackedUrl("email")
@@ -78,6 +128,17 @@ export function PassportSharePanel({ passportId, productName }: Props) {
 
   const handleCopy = async () => {
     if (!guardDebounce()) return
+    if (isPreview) {
+      try {
+        await navigator.clipboard.writeText(PREVIEW_SHARE_URL)
+        setCopied(true)
+        if (copiedResetRef.current) window.clearTimeout(copiedResetRef.current)
+        copiedResetRef.current = window.setTimeout(() => setCopied(false), 2000)
+      } catch {
+        showToast("Could not copy")
+      }
+      return
+    }
     setBusy("direct")
     try {
       const url = await createTrackedUrl("direct")
@@ -92,20 +153,21 @@ export function PassportSharePanel({ passportId, productName }: Props) {
 
   return (
     <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-        Share this passport
-      </h2>
+      <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Share this passport</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Tracked links help you see which channel drives visits.
+        {isPreview
+          ? "Preview: actions below simulate the live experience without leaving the dashboard."
+          : "Tracked links help you see which channel drives visits."}
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => void handleWhatsApp()}
-          disabled={busy !== null}
+          disabled={!isPreview && busy !== null}
           className={clsx(
-            "inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white transition",
-            "bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-60"
+            btnTactile,
+            "inline-flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white",
+            "bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-60",
           )}
         >
           {busy === "whatsapp" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
@@ -114,8 +176,11 @@ export function PassportSharePanel({ passportId, productName }: Props) {
         <button
           type="button"
           onClick={() => void handleEmail()}
-          disabled={busy !== null}
-          className="inline-flex flex-1 min-w-[120px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-200 disabled:opacity-60"
+          disabled={!isPreview && busy !== null}
+          className={clsx(
+            btnTactile,
+            "inline-flex min-w-[120px] flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-200 disabled:opacity-60",
+          )}
         >
           {busy === "email" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
           Email
@@ -123,11 +188,23 @@ export function PassportSharePanel({ passportId, productName }: Props) {
         <button
           type="button"
           onClick={() => void handleCopy()}
-          disabled={busy !== null}
-          className="inline-flex flex-1 min-w-[120px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+          disabled={!isPreview && busy !== null}
+          className={clsx(
+            btnTactile,
+            "inline-flex min-w-[120px] flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition disabled:opacity-60",
+            copied
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-400"
+              : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
+          )}
         >
-          {busy === "direct" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-          Copy link
+          {isPreview && copied ? (
+            <Check className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          ) : busy === "direct" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Link2 className="h-4 w-4" />
+          )}
+          {isPreview && copied ? "Copied!" : "Copy link"}
         </button>
       </div>
       {toast ? (

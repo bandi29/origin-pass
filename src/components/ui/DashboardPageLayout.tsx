@@ -7,15 +7,15 @@ type Props = {
   className?: string
 }
 
-/** Max-width dashboard column + standard page padding & vertical rhythm */
+/** Max-width dashboard column — used only inside {@link AppShell} */
 export function DashboardPageLayout({ children, className }: Props) {
   return (
     <div
       className={clsx(
         "mx-auto w-full max-w-6xl",
-        spacing.pageStack,
-        spacing.page,
-        className
+        spacing.dashboardChromeStack,
+        spacing.dashboardMain,
+        className,
       )}
     >
       {children}

@@ -1,7 +1,8 @@
 import OpenAI from "openai"
+import { resolveOpenaiApiKey } from "@/lib/env-local-file"
 
 export function requireOpenAI(): OpenAI {
-  const key = process.env.OPENAI_API_KEY?.trim()
+  const key = resolveOpenaiApiKey()
   if (!key) {
     throw new Error("OPENAI_API_KEY is not configured")
   }

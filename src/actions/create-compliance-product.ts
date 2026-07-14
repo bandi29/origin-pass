@@ -8,6 +8,11 @@ import type { ComplianceData } from "@/lib/compliance/category-compliance-strate
 import { type CategoryProductPayload, validateCategoryProduct } from "@/lib/compliance/validate-category-product"
 import { ensureBrandProfile } from "@/lib/tenancy"
 import type { ProductAiMetadata } from "@/lib/compliance/product-ai-metadata"
+import {
+  persistVerificationOutputs,
+  runVerificationOrchestrator,
+} from "@/backend/modules/verification-engine"
+import { summarizeMaterials, summarizeOrigin } from "@/lib/compliance/compliance-field-summaries"
 
 export interface CreateComplianceProductResult {
   success: boolean
@@ -30,21 +35,15 @@ function isMissingAiMetadataColumn(error: unknown): boolean {
   return code === "PGRST204" && message.includes("ai_metadata")
 }
 
-function summarizeOrigin(c: ComplianceData): string {
-  const country = String(c.origin_country ?? "").trim()
-  const geo = c.origin_geo as { lat?: number; lng?: number } | undefined
-  const geoStr =
-    geo && typeof geo.lat === "number" && typeof geo.lng === "number"
-      ? ` [${geo.lat.toFixed(4)}, ${geo.lng.toFixed(4)}]`
-      : ""
-  return `${country}${geoStr}`.trim()
-}
-
-function summarizeMaterials(key: CategoryKey, c: ComplianceData): string {
-  if (key === "textile") return String(c.fiber_composition ?? "")
-  if (key === "wood") return String(c.wood_species ?? "")
-  if (key === "jewelry") return String(c.materials_disclosure ?? "")
-  return String(c.primary_material_descriptor ?? c.product_story ?? "")
+function insertErrorDetail(error: unknown): string {
+  if (!error || typeof error !== "object") return ""
+  const e = error as { message?: unknown; code?: unknown; details?: unknown }
+  const message = typeof e.message === "string" ? e.message.trim() : ""
+  const details = typeof e.details === "string" ? e.details.trim() : ""
+  const code = typeof e.code === "string" ? e.code.trim() : ""
+  const body = [message, details].filter(Boolean).join(" — ")
+  if (!body) return ""
+  return code ? `${code}: ${body}` : body
 }
 
 export async function createComplianceProduct(raw: {
@@ -169,11 +168,166 @@ export async function createComplianceProduct(raw: {
         }
       }
       console.error("createComplianceProduct", error)
+      const detail = insertErrorDetail(error)
       return {
         success: false,
-        error:
-          "Could not save product. Apply migrations 20260414_category_compliance_product_columns and 20260415_product_ai_metadata (or check server logs).",
+        error: detail
+          ? `${detail} — If columns are missing, run the SQL in supabase/migrations/20260414_category_compliance_product_columns.sql and 20260415_product_ai_metadata.sql (Supabase Dashboard → SQL Editor), or run: supabase link && supabase db push`
+          : "Could not save product. Apply migrations 20260414_category_compliance_product_columns and 20260415_product_ai_metadata (or check server logs).",
       }
+    }
+
+    const productId = product?.id as string
+    if (productId) {
+      try {
+        const orchestrator = await runVerificationOrchestrator(
+          {
+            supabase,
+            organizationId,
+            actor: user.id,
+          },
+          {
+            currentRiskScore: 0,
+            product: {
+              productId,
+              sku: payload.sku ?? null,
+              serialNumber: null,
+              originCountry: String(complianceData.origin_country ?? "") || null,
+              supplierId: String(complianceData.supplier_id ?? "") || null,
+              materials: materials
+                ? [{ name: "primary", compositionPercentage: 100 }]
+                : [],
+            },
+          },
+        )
+
+        await persistVerificationOutputs(
+          { supabase, organizationId, actor: user.id },
+          productId,
+          orchestrator,
+        )
+
+        await supabase
+          .from("products")
+          .update({
+            risk_score: orchestrator.riskAfter,
+            verification_status: orchestrator.status,
+            lifecycle_status: "validated",
+          })
+          .eq("id", productId)
+      } catch (verificationError) {
+        console.warn("verification orchestrator skipped:", verificationError)
+      }
+    }
+
+    return { success: true, productId, dppReadinessScore }
+  } catch (e) {
+    console.error(e)
+    return { success: false, error: "Unexpected error saving product." }
+  }
+}
+
+/**
+ * Wizard step 1: create a compliance product shell (empty `compliance_data`) without full
+ * category validation so users can fill required fields in step 2.
+ */
+export async function createComplianceWizardStep1(raw: {
+  complianceCategoryKey: CategoryKey
+  name: string
+  sku?: string | null
+}): Promise<CreateComplianceProductResult> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    await ensureBrandProfile(supabase, user)
+
+    let organizationId: string | null = null
+    try {
+      const { data: userRow } = await supabase.from("users").select("organization_id").eq("id", user.id).maybeSingle()
+      organizationId = userRow?.organization_id ?? null
+    } catch {
+      organizationId = null
+    }
+
+    const name = raw.name.trim()
+    if (name.length < 3) {
+      return { success: false, error: "Product name must be at least 3 characters." }
+    }
+
+    const schema = categorySchemas[raw.complianceCategoryKey]
+    if (!schema) {
+      return { success: false, error: "Unknown compliance category" }
+    }
+
+    const complianceData: ComplianceData = {}
+    const { computeDppReadinessScore } = await import("@/lib/compliance/validate-category-product")
+    const dppReadinessScore = computeDppReadinessScore(raw.complianceCategoryKey, complianceData)
+
+    const { data: brand } = await supabase.from("profiles").select("brand_name").eq("id", user.id).single()
+
+    const jsonLd = buildProductJsonLd({
+      name,
+      story: null,
+      materials: null,
+      origin: null,
+      lifecycle: null,
+      imageUrl: null,
+      brandName: brand?.brand_name ?? null,
+    })
+
+    const row = {
+      brand_id: user.id,
+      organization_id: organizationId,
+      name,
+      sku: raw.sku?.trim() || null,
+      category: schema.label,
+      compliance_category_key: raw.complianceCategoryKey,
+      story: null,
+      materials: null,
+      origin: null,
+      lifecycle: null,
+      image_url: null,
+      base_data: {} as Record<string, unknown>,
+      compliance_data: complianceData,
+      traceability_data: {} as Record<string, unknown>,
+      is_archived: false,
+      json_ld: jsonLd,
+    }
+
+    const { data: product, error } = await supabase.from("products").insert(row).select("id").single()
+
+    if (error) {
+      if (isMissingJsonLdColumn(error)) {
+        const { data: p2, error: e2 } = await supabase
+          .from("products")
+          .insert({
+            brand_id: user.id,
+            organization_id: organizationId,
+            name,
+            sku: raw.sku?.trim() || null,
+            category: schema.label,
+            story: null,
+            materials: null,
+            origin: null,
+            lifecycle: null,
+            image_url: null,
+            is_archived: false,
+          })
+          .select("id")
+          .single()
+        if (!e2 && p2?.id) {
+          return { success: true, productId: p2.id as string, dppReadinessScore }
+        }
+      }
+      console.error("createComplianceWizardStep1", error)
+      return { success: false, error: insertErrorDetail(error) || "Could not save product." }
     }
 
     return { success: true, productId: product?.id as string, dppReadinessScore }

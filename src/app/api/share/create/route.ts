@@ -3,6 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createShareEvent, type ShareChannel } from "@/backend/modules/share/repository"
 import { checkShareCreateRateLimit } from "@/lib/share-create-rate-limit"
 import { isValidUuid } from "@/lib/security"
+import { getClientIp } from "@/lib/client-ip"
+import {
+  deriveAnonymousScope,
+  getCachedIdempotentResponse,
+  readIdempotencyKey,
+  storeIdempotentResponse,
+} from "@/lib/idempotency"
 
 const bodySchema = z.object({
   passportId: z.string().uuid(),
@@ -10,7 +17,7 @@ const bodySchema = z.object({
 })
 
 function clientIp(request: Request): string | null {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
+  return getClientIp(request.headers)
 }
 
 function baseUrl(request: Request): string {
@@ -21,8 +28,17 @@ function baseUrl(request: Request): string {
 }
 
 export async function POST(request: Request) {
-  if (!checkShareCreateRateLimit(clientIp(request)).ok) {
+  const ip = clientIp(request)
+  if (!checkShareCreateRateLimit(ip).ok) {
     return Response.json({ error: "Too many share links. Try again later." }, { status: 429 })
+  }
+
+  // Idempotency: replay a cached response if the client retries with the same key.
+  const idempotencyKey = readIdempotencyKey(request)
+  const idempotencyScope = deriveAnonymousScope(ip)
+  if (idempotencyKey) {
+    const cached = await getCachedIdempotentResponse(idempotencyScope, idempotencyKey)
+    if (cached) return cached
   }
 
   let json: unknown
@@ -65,5 +81,9 @@ export async function POST(request: Request) {
   const origin = baseUrl(request)
   const url = `${origin}/s/${passportId}?sid=${created.id}&ch=${channel}`
 
-  return Response.json({ shareId: created.id, url })
+  const body = { shareId: created.id, url }
+  if (idempotencyKey) {
+    await storeIdempotentResponse(idempotencyScope, idempotencyKey, { status: 200, body })
+  }
+  return Response.json(body)
 }

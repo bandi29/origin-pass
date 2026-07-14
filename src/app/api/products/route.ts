@@ -1,4 +1,4 @@
-import { createComplianceProduct } from "@/actions/create-compliance-product"
+import { createComplianceProduct, createComplianceWizardStep1 } from "@/actions/create-compliance-product"
 import { CATEGORY_KEYS } from "@/lib/compliance/category-schemas"
 import { createProductBodySchema } from "@/lib/passport-wizard-schemas"
 import {
@@ -14,6 +14,13 @@ const complianceProductApiSchema = z.object({
   name: z.string().min(1).max(500),
   sku: z.string().max(200).optional().nullable(),
   complianceData: z.record(z.string(), z.unknown()).optional().default({}),
+})
+
+const complianceWizardStep1Schema = z.object({
+  wizardStep1: z.literal(true),
+  complianceCategoryKey: z.enum(CATEGORY_KEYS),
+  name: z.string().trim().min(3, "Name must be at least 3 characters").max(500),
+  sku: z.string().max(200).optional().nullable(),
 })
 
 export async function POST(req: Request) {
@@ -33,6 +40,22 @@ export async function POST(req: Request) {
     json = await req.json()
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 })
+  }
+
+  if (json && typeof json === "object" && json !== null && "wizardStep1" in json && (json as { wizardStep1?: unknown }).wizardStep1 === true) {
+    const parsedW = complianceWizardStep1Schema.safeParse(json)
+    if (!parsedW.success) {
+      const msg = parsedW.error.issues[0]?.message ?? "Invalid wizard step 1 body"
+      return Response.json({ error: msg }, { status: 400 })
+    }
+    const result = await createComplianceWizardStep1(parsedW.data)
+    if (!result.success) {
+      return Response.json({ error: result.error ?? "Could not create product" }, { status: 400 })
+    }
+    return Response.json({
+      productId: result.productId,
+      dppReadinessScore: result.dppReadinessScore,
+    })
   }
 
   if (json && typeof json === "object" && json !== null && "complianceCategoryKey" in json) {

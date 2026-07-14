@@ -42,7 +42,7 @@ function createMockSupabase(overrides?: {
         getPublicUrl: overrides?.getPublicUrl ?? defaultGetPublicUrl,
       }),
     },
-  } as Parameters<typeof uploadProductImageClient>[1]
+  } as unknown as Parameters<typeof uploadProductImageClient>[1]
 }
 
 describe("validateFile", () => {

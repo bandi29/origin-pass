@@ -1,4 +1,5 @@
 import { requireOpenAI, TRANSLATE_MODEL } from "@/lib/openai-client"
+import { callUpstream } from "@/lib/resilience"
 
 const LANG_NAMES: Record<string, string> = {
   fr: "French",
@@ -35,13 +36,21 @@ Requirements:
 Content:
 ${JSON.stringify(payload)}`
 
-  const completion = await openai.chat.completions.create({
-    model: TRANSLATE_MODEL,
-    messages: [{ role: "user", content: userContent }],
-    response_format: { type: "json_object" },
-    temperature: 0.4,
-    max_tokens: 4096,
-  })
+  const completion = await callUpstream(
+    "openai",
+    (signal) =>
+      openai.chat.completions.create(
+        {
+          model: TRANSLATE_MODEL,
+          messages: [{ role: "user", content: userContent }],
+          response_format: { type: "json_object" },
+          temperature: 0.4,
+          max_tokens: 4096,
+        },
+        { signal },
+      ),
+    { timeoutMs: 20_000, attempts: 3 },
+  )
 
   const raw = completion.choices[0]?.message?.content?.trim()
   if (!raw) throw new Error("Empty translation from model")

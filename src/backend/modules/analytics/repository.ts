@@ -1,5 +1,58 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
+/**
+ * Single round-trip helper that returns ALL five fraud-detection counters for a
+ * passport. Use this in hot paths (processScan) instead of issuing five queries.
+ * The dedicated counter helpers below are kept for back-compat but are slower.
+ */
+export type ScanFraudSignals = {
+  recentScans: number
+  sameIpRecentScans: number
+  distinctCountriesLastHour: number
+  totalScanCount: number
+  scansLastMinute: number
+}
+
+export async function computeScanFraudSignals(
+  passportId: string,
+  ipAddress: string | null,
+): Promise<ScanFraudSignals> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .rpc("compute_scan_fraud_signals", {
+      p_passport_id: passportId,
+      p_ip_address: ipAddress,
+    })
+    .maybeSingle()
+
+  if (error) {
+    console.warn("computeScanFraudSignals rpc:", error.message)
+    return {
+      recentScans: 0,
+      sameIpRecentScans: 0,
+      distinctCountriesLastHour: 0,
+      totalScanCount: 0,
+      scansLastMinute: 0,
+    }
+  }
+
+  const row = (data ?? {}) as {
+    recent_scans?: number | string | null
+    same_ip_recent_scans?: number | string | null
+    distinct_countries_hour?: number | string | null
+    total_scan_count?: number | string | null
+    scans_last_minute?: number | string | null
+  }
+
+  return {
+    recentScans: Number(row.recent_scans) || 0,
+    sameIpRecentScans: Number(row.same_ip_recent_scans) || 0,
+    distinctCountriesLastHour: Number(row.distinct_countries_hour) || 0,
+    totalScanCount: Number(row.total_scan_count) || 0,
+    scansLastMinute: Number(row.scans_last_minute) || 0,
+  }
+}
+
 export async function countRecentScans(
   passportId: string,
   minutes: number

@@ -10,12 +10,22 @@ export function normalizeHeader(h: string): string {
     .replace(/[^a-z0-9_]/g, "")
 }
 
+/** Fuzzy match without short-token false positives (e.g. "co" ⊂ "column1"). */
+export function synonymMatchesNormalizedHeader(candidate: string, normalizedHeader: string): boolean {
+  const c = candidate
+  const norm = normalizedHeader
+  if (norm === c) return true
+  if (c.length >= 3 && norm.includes(c)) return true
+  if (norm.length >= 3 && c.includes(norm)) return true
+  return false
+}
+
 const SYNONYMS: Record<ImportFieldKey, string[]> = {
   product_name: ["product_name", "name", "title", "product", "productname", "item_name"],
   product_id: ["product_id", "sku", "article", "article_id", "item_id", "style", "model", "productid", "sku_code"],
   category: ["category", "type", "product_category", "class"],
   brand: ["brand", "brand_name", "maker", "manufacturer", "label"],
-  origin_country: ["origin_country", "country", "country_of_origin", "made_in", "origin", "co"],
+  origin_country: ["origin_country", "country", "country_of_origin", "made_in", "origin"],
   material: ["material", "materials", "composition", "fabric"],
   batch_number: ["batch_number", "batch", "lot", "lot_number", "production_batch"],
   manufacture_date: ["manufacture_date", "mfg_date", "production_date", "date", "made_on"],
@@ -53,7 +63,7 @@ export function guessMapping(headers: string[]): ColumnMapping {
     }
     for (const [norm, orig] of normToOriginal) {
       if (usedOriginals.has(orig)) continue
-      if (candidates.some((c) => norm === c || norm.includes(c) || c.includes(norm))) {
+      if (candidates.some((c) => synonymMatchesNormalizedHeader(c, norm))) {
         assign(field, orig)
         break
       }

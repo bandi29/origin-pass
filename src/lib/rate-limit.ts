@@ -1,44 +1,88 @@
 /**
- * Simple in-memory rate limiter for verification API.
- * For production at scale, use Redis/Upstash or similar.
+ * Redis-backed sliding rate limiter with in-memory fallback for development.
  *
- * Limit: 60 requests per minute per IP.
+ * Default limit: 60 requests per minute per IP.
+ *
+ * Production: when REDIS_URL is set, uses Redis INCR + EXPIRE so the limit is shared
+ * across serverless instances.
+ *
+ * Development / no Redis: falls back to an in-memory Map keyed by IP. NOTE: the
+ * in-memory limiter is per-process — it is trivially bypassed in serverless
+ * environments by waiting for a cold start or hitting a different instance.
  */
+import { getRedis } from "@/lib/redis-client"
 
-const windowMs = 60 * 1000
-const maxRequests = 60
+const DEFAULT_WINDOW_MS = 60 * 1000
+const DEFAULT_MAX = 60
 
-const store = new Map<string, { count: number; resetAt: number }>()
+type Result = { ok: boolean; remaining: number }
 
-function prune() {
-  const now = Date.now()
-  for (const [key, val] of store.entries()) {
-    if (val.resetAt < now) store.delete(key)
+const memoryStore = new Map<string, { count: number; resetAt: number }>()
+
+function pruneMemory(now: number) {
+  for (const [key, val] of memoryStore.entries()) {
+    if (val.resetAt < now) memoryStore.delete(key)
   }
 }
 
-export function checkRateLimit(ip: string | null): { ok: boolean; remaining: number } {
-  if (!ip) return { ok: true, remaining: maxRequests }
-
+function checkInMemory(key: string, max: number, windowMs: number): Result {
   const now = Date.now()
-  if (store.size > 10000) prune()
+  if (memoryStore.size > 10000) pruneMemory(now)
 
-  const entry = store.get(ip)
+  const entry = memoryStore.get(key)
   if (!entry) {
-    store.set(ip, { count: 1, resetAt: now + windowMs })
-    return { ok: true, remaining: maxRequests - 1 }
+    memoryStore.set(key, { count: 1, resetAt: now + windowMs })
+    return { ok: true, remaining: max - 1 }
   }
-
   if (entry.resetAt < now) {
     entry.count = 1
     entry.resetAt = now + windowMs
-    return { ok: true, remaining: maxRequests - 1 }
+    return { ok: true, remaining: max - 1 }
   }
-
   entry.count++
-  const remaining = Math.max(0, maxRequests - entry.count)
-  return {
-    ok: entry.count <= maxRequests,
-    remaining,
+  const remaining = Math.max(0, max - entry.count)
+  return { ok: entry.count <= max, remaining }
+}
+
+async function checkInRedis(key: string, max: number, windowMs: number): Promise<Result> {
+  const redis = getRedis()
+  if (!redis) return checkInMemory(key, max, windowMs)
+
+  const redisKey = `rl:${key}`
+  try {
+    const pipeline = redis.multi()
+    pipeline.incr(redisKey)
+    pipeline.pexpire(redisKey, windowMs, "NX")
+    const replies = (await pipeline.exec()) as [Error | null, number][] | null
+    if (!replies) return checkInMemory(key, max, windowMs)
+    const count = Number(replies[0]?.[1] ?? 0)
+    const remaining = Math.max(0, max - count)
+    return { ok: count <= max, remaining }
+  } catch (err) {
+    console.warn("Redis rate limit error, falling back to memory:", err instanceof Error ? err.message : err)
+    return checkInMemory(key, max, windowMs)
   }
+}
+
+/**
+ * Synchronous check kept for backwards compatibility with existing callers.
+ * Uses the in-memory store only; prefer `checkRateLimitAsync` for Redis-backed
+ * limits that persist across serverless instances.
+ */
+export function checkRateLimit(ip: string | null, max = DEFAULT_MAX, windowMs = DEFAULT_WINDOW_MS): Result {
+  if (!ip) return { ok: true, remaining: max }
+  return checkInMemory(ip, max, windowMs)
+}
+
+/**
+ * Async variant that prefers Redis when available. Recommended for all new code
+ * and for any endpoint that may run on serverless / multiple instances.
+ */
+export async function checkRateLimitAsync(
+  ip: string | null,
+  max = DEFAULT_MAX,
+  windowMs = DEFAULT_WINDOW_MS,
+): Promise<Result> {
+  if (!ip) return { ok: true, remaining: max }
+  return checkInRedis(ip, max, windowMs)
 }

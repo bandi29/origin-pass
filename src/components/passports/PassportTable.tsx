@@ -94,7 +94,7 @@ export function PassportTable({
               <td className="px-6 py-4 text-right">
                 <div className="flex items-center justify-end gap-2">
                   <Link
-                    href={`/product/passports/${p.id}`}
+                    href={`/dashboard/product-identity/passports/${p.id}`}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <Eye className="h-3.5 w-3.5" />
@@ -110,7 +110,7 @@ export function PassportTable({
                     Verify
                   </a>
                   <Link
-                    href={`/product/passports/${p.id}?tab=qr`}
+                    href={`/dashboard/product-identity/passports/${p.id}?tab=qr`}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <Download className="h-3.5 w-3.5" />

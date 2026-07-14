@@ -1,9 +1,6 @@
+import { unstable_cache } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
-import {
-  getScopedPassportIds,
-  getScopedProductIds,
-  NIL_UUID,
-} from "@/backend/modules/organizations/scope"
+import { getScopedOrgScope, getScopedPassportIds, NIL_UUID } from "@/backend/modules/organizations/scope"
 import type {
   AlertIssueType,
   AlertSeverity,
@@ -15,7 +12,6 @@ import type {
 import type {
   AlertTypeSlice,
   AnalyticsDayPoint,
-  AuditLogEntry,
   FraudAnalyticsPayload,
   GeoHeatRow,
   ScanEvent,
@@ -121,12 +117,11 @@ export type AuthenticityOverviewPayload = {
   scansByProductId: Record<string, ScanEvent[]>
 }
 
-export async function getAuthenticityOverviewData(
+async function fetchAuthenticityOverviewData(
   userId: string
 ): Promise<AuthenticityOverviewPayload> {
-  const passportIds = await getScopedPassportIds(userId)
+  const { productIds, passportIds } = await getScopedOrgScope(userId)
   const ids = passportIds.length ? passportIds : [NIL_UUID]
-  const productIds = await getScopedProductIds(userId)
   const productScope = productIds.length ? productIds : [NIL_UUID]
 
   const admin = createAdminClient()
@@ -143,8 +138,9 @@ export async function getAuthenticityOverviewData(
     failedPrevRes,
     alertRes,
     alertPrevRes,
+    qrActivationRes,
+    totalScanEventsRes,
     recentScansRes,
-    productScansRes,
   ] = await Promise.all([
     admin
       .from("passports")
@@ -206,6 +202,15 @@ export async function getAuthenticityOverviewData(
       .gte("scan_timestamp", `${prevStart}T00:00:00Z`)
       .lte("scan_timestamp", `${prevEnd}T23:59:59.999Z`),
     admin
+      .from("qr_identities")
+      .select("id", { head: true, count: "exact" })
+      .in("product_id", productScope)
+      .eq("activation_status", "active"),
+    admin
+      .from("scan_events")
+      .select("id", { head: true, count: "exact" })
+      .in("product_id", productScope),
+    admin
       .from("passport_scans")
       .select(
         `
@@ -231,16 +236,6 @@ export async function getAuthenticityOverviewData(
       .in("passport_id", ids)
       .order("scan_timestamp", { ascending: false })
       .limit(120),
-    admin
-      .from("passport_scans")
-      .select(
-        "id, location_country, location_city, scan_timestamp, passports!inner(product_id)"
-      )
-      .in("passport_id", ids)
-      .gte("scan_timestamp", `${start}T00:00:00Z`)
-      .lte("scan_timestamp", `${end}T23:59:59.999Z`)
-      .order("scan_timestamp", { ascending: false })
-      .limit(2000),
   ])
 
   const verifiedProducts = passportCountRes.count ?? 0
@@ -252,6 +247,8 @@ export async function getAuthenticityOverviewData(
   const failedPrev = failedPrevRes.count ?? 0
   const alerts = alertRes.count ?? 0
   const alertsPrev = alertPrevRes.count ?? 0
+  const qrActivations = qrActivationRes.count ?? 0
+  const totalScanEvents = totalScanEventsRes.count ?? 0
 
   const m1 = pctTrendLabel(newPassportsCur, newPassportsPrev)
   const m2 = pctTrendLabel(successful, successfulPrev)
@@ -289,6 +286,20 @@ export async function getAuthenticityOverviewData(
       value: alerts.toLocaleString(),
       trendLabel: m4.label,
       trendUp: !m4.trendUp,
+    },
+    {
+      id: "qr_activations",
+      label: "QR activations",
+      value: qrActivations.toLocaleString(),
+      trendLabel: "Active immutable QR identities",
+      trendUp: true,
+    },
+    {
+      id: "total_scan_events",
+      label: "Total scan events",
+      value: totalScanEvents.toLocaleString(),
+      trendLabel: "All-time scan telemetry volume",
+      trendUp: true,
     },
   ]
 
@@ -372,23 +383,59 @@ export async function getAuthenticityOverviewData(
   }
 
   const scansByProductId: Record<string, ScanEvent[]> = {}
-  const productScanRows = (productScansRes.data ?? []) as Array<{
-    id: string
-    location_country: string | null
-    location_city: string | null
-    scan_timestamp: string
-    passports: { product_id: string } | { product_id: string }[] | null
-  }>
-  for (const sc of productScanRows) {
-    const p = sc.passports
-    const passport = Array.isArray(p) ? p[0] : p
-    const pid = passport?.product_id
-    if (!pid) continue
-    if (!scansByProductId[pid]) scansByProductId[pid] = []
-    scansByProductId[pid]!.push(scanToEvent(sc, pid))
+  const rowProductIds = rows.map((r) => r.product_id)
+
+  if (rowProductIds.length > 0 && passportIds.length > 0) {
+    const { data: passportSubset } = await admin
+      .from("passports")
+      .select("id")
+      .in("id", ids)
+      .in("product_id", rowProductIds)
+
+    const subPassportIds = (passportSubset ?? []).map((p) => String((p as { id: string }).id))
+    if (subPassportIds.length > 0) {
+      const { data: productScanRows } = await admin
+        .from("passport_scans")
+        .select(
+          "id, location_country, location_city, scan_timestamp, passports!inner(product_id)",
+        )
+        .in("passport_id", subPassportIds)
+        .gte("scan_timestamp", `${start}T00:00:00Z`)
+        .lte("scan_timestamp", `${end}T23:59:59.999Z`)
+        .order("scan_timestamp", { ascending: false })
+        .limit(2500)
+
+      const typed = (productScanRows ?? []) as Array<{
+        id: string
+        location_country: string | null
+        location_city: string | null
+        scan_timestamp: string
+        passports: { product_id: string } | { product_id: string }[] | null
+      }>
+      for (const sc of typed) {
+        const p = sc.passports
+        const passport = Array.isArray(p) ? p[0] : p
+        const pid = passport?.product_id
+        if (!pid) continue
+        if (!scansByProductId[pid]) scansByProductId[pid] = []
+        scansByProductId[pid]!.push(scanToEvent(sc, pid))
+      }
+    }
   }
 
   return { metrics, rows, scansByProductId }
+}
+
+const getAuthenticityOverviewCached = unstable_cache(
+  async (userId: string) => fetchAuthenticityOverviewData(userId),
+  ["dashboard-authenticity-overview"],
+  { revalidate: 25 },
+)
+
+export async function getAuthenticityOverviewData(
+  userId: string
+): Promise<AuthenticityOverviewPayload> {
+  return getAuthenticityOverviewCached(userId)
 }
 
 export async function getCounterfeitAlertsForUser(
@@ -462,11 +509,12 @@ export async function getCounterfeitAlertsForUser(
     admin
       .from("passport_scans")
       .select(
-        "scan_timestamp, scan_result, location_city, location_country, risk_score"
+        "id, scan_timestamp, scan_result, location_city, location_country, risk_score"
       )
       .eq("passport_id", r.passport_id)
+      .lte("scan_timestamp", r.scan_timestamp)
       .order("scan_timestamp", { ascending: false })
-      .limit(6)
+      .limit(12)
   )
   const historyResults = await Promise.all(historyPromises)
 
@@ -483,24 +531,34 @@ export async function getCounterfeitAlertsForUser(
 
     const histRes = historyResults[idx]
     const histRows = histRes?.data ?? []
-    const scan_history = histRows.map((h) => {
-      const hc = (h.location_city ?? "").trim()
-      const hk = (h.location_country ?? "").trim()
-      const loc =
-        hc && hk ? `${hc}, ${hk}` : hk || hc || undefined
-      return {
-        at: h.scan_timestamp as string,
-        event:
+    const seenHistory = new Set<string>()
+    const scan_history = histRows
+      .map((h) => {
+        const hc = (h.location_city ?? "").trim()
+        const hk = (h.location_country ?? "").trim()
+        const loc = hc && hk ? `${hc}, ${hk}` : hk || hc || undefined
+        const event =
           h.scan_result === "suspicious"
             ? "Suspicious scan"
             : h.scan_result === "duplicate"
               ? "Duplicate pattern"
               : h.scan_result === "invalid"
                 ? "Invalid verification"
-                : "Scan",
-        location: loc,
-      }
-    })
+                : "Scan"
+        return {
+          at: h.scan_timestamp as string,
+          event,
+          location: loc,
+          signature: `${h.scan_timestamp}|${event}|${loc ?? ""}`,
+        }
+      })
+      .filter((entry) => {
+        if (seenHistory.has(entry.signature)) return false
+        seenHistory.add(entry.signature)
+        return true
+      })
+      .slice(0, 6)
+      .map(({ at, event, location }) => ({ at, event, location }))
 
     const status: AlertStatus =
       (r.scan_result === "suspicious" ? "investigating" : "open") as AlertStatus
@@ -737,81 +795,4 @@ export async function getGeoHeatForUser(userId: string): Promise<GeoHeatRow[]> {
   return rows.sort((a, b) => b.suspicious_scans - a.suspicious_scans)
 }
 
-export async function getAuditLogForUser(
-  userId: string,
-  limit = 200
-): Promise<AuditLogEntry[]> {
-  const passportIds = await getScopedPassportIds(userId)
-  const ids = passportIds.length ? passportIds : [NIL_UUID]
-  const admin = createAdminClient()
-
-  const { data, error } = await admin
-    .from("passport_scans")
-    .select(
-      `
-      id,
-      scan_timestamp,
-      scan_result,
-      location_country,
-      location_city,
-      passports!inner(
-        product_id,
-        products(id, name)
-      )
-    `
-    )
-    .in("passport_id", ids)
-    .order("scan_timestamp", { ascending: false })
-    .limit(limit)
-
-  if (error || !data?.length) return []
-
-  type R = {
-    id: string
-    scan_timestamp: string
-    scan_result: string | null
-    location_country: string | null
-    location_city: string | null
-    passports:
-      | {
-          product_id: string
-          products:
-            | { id: string; name: string | null }
-            | { id: string; name: string | null }[]
-            | null
-        }
-      | {
-          product_id: string
-          products:
-            | { id: string; name: string | null }
-            | { id: string; name: string | null }[]
-            | null
-        }[]
-      | null
-  }
-
-  return (data as R[]).map((r) => {
-    const passport = Array.isArray(r.passports) ? r.passports[0] : r.passports
-    const rawProd = passport?.products
-    const prod = Array.isArray(rawProd) ? rawProd[0] : rawProd
-    const pid = prod?.id ?? passport?.product_id ?? "—"
-    const city = (r.location_city ?? "").trim()
-    const country = (r.location_country ?? "").trim()
-    const location =
-      city && country ? `${city}, ${country}` : country || city || "—"
-    const sr = r.scan_result ?? "valid"
-    const action: AuditLogEntry["action"] =
-      sr === "suspicious" ? "Flagged" : sr === "valid" ? "Scan" : "Verify"
-    const result: AuditLogEntry["result"] =
-      sr === "invalid" ? "Failed" : "Success"
-    return {
-      event_id: `AUD-${String(r.id).replace(/-/g, "").slice(0, 12)}`,
-      product_id: pid,
-      action,
-      result,
-      location,
-      timestamp: r.scan_timestamp,
-      actor: "customer:scan",
-    }
-  })
-}
+export { getAuditLogForUser, getVerificationAuditLogForUser, getOperationsAuditLogForUser } from "@/lib/audit-log-server"

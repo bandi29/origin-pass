@@ -1,4 +1,11 @@
 {
+    "Breadcrumbs": {
+        "dashboard": "Dashboard",
+        "product_identity": "Product Identity",
+        "print_labels": "Print Labels",
+        "verification": "Verification",
+        "alerts": "Alerts"
+    },
     "Verification": {
         "title": "Certificate of Authenticity",
         "scanResult": "Scan result",
@@ -29,6 +36,8 @@
         "scanTip": "Keep this page open for resale or warranty checks.",
         "unknown": "Unknown",
         "home": "Home",
+        "breadcrumbProduct": "Product",
+        "breadcrumbPassports": "Passports",
         "breadcrumbVerify": "Verification",
         "productImage": "Product Image",
         "footer": {

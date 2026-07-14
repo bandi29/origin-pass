@@ -9,6 +9,7 @@ create type usage_event as enum ('item_created', 'scan');
 create table profiles (
   id uuid references auth.users on delete cascade not null primary key,
   brand_name text,
+  passport_template_key text not null default 'classic',
   paddle_customer_id text,
   paddle_subscription_id text,
   subscription_status text default 'active',
@@ -91,7 +92,7 @@ create policy "Brands update profile info" on profiles
 
 -- Prevent user updates to subscription fields
 revoke update (subscription_status, paddle_customer_id, paddle_subscription_id) on profiles from authenticated;
-grant update (brand_name) on profiles to authenticated;
+grant update (brand_name, passport_template_key) on profiles to authenticated;
 
 -- PRODUCTS
 create policy "Brands can view own products" on products
@@ -131,23 +132,7 @@ create policy "Brands can view own usage" on usage_logs
   for select using (auth.uid() = brand_id);
 -- Logs are immutable by nature, no update/delete policies for users.
 
--- PUBLIC READ VIEW (SAFE FIELDS ONLY)
--- Restricted to active batches; SECURITY DEFINER by design (see migration comment).
-create or replace view public_item_scan with (security_invoker = false) as
-select
-  items.serial_id,
-  products.name as product_name,
-  products.story,
-  products.image_url,
-  batches.production_run_name,
-  profiles.brand_name
-from items
-join batches on batches.id = items.batch_id
-join products on products.id = batches.product_id
-join profiles on profiles.id = items.brand_id
-where batches.is_active = true;
-
-grant select on public_item_scan to anon;
+-- PUBLIC READ (server-side only — no PostgREST view; see src/lib/public-item-scan-server.ts)
 
 -- INDEXES
 create index if not exists idx_items_serial_id on items(serial_id);
@@ -217,6 +202,31 @@ create table if not exists users (
 alter table products add column if not exists organization_id uuid references organizations(id) on delete set null;
 alter table products add column if not exists description text;
 alter table products add column if not exists category text;
+
+-- Category-aware compliance + AI audit (migrations 20260414, 20260415)
+alter table products add column if not exists compliance_category_key text;
+alter table products add column if not exists base_data jsonb not null default '{}'::jsonb;
+alter table products add column if not exists compliance_data jsonb not null default '{}'::jsonb;
+alter table products add column if not exists traceability_data jsonb not null default '{}'::jsonb;
+
+comment on column products.compliance_category_key is 'Registry key: leather | textile | furniture | jewelry — drives validation & UI schema.';
+comment on column products.base_data is 'Schema-driven basic fields (name/sku/story mirrors may duplicate top-level columns for DPP tooling).';
+comment on column products.compliance_data is 'ESPR/EUDR/due-diligence fields per category schema.';
+comment on column products.traceability_data is 'Structured origin, processing steps, certifications list, batches.';
+
+create index if not exists idx_products_compliance_category_key on products(compliance_category_key)
+  where compliance_category_key is not null;
+
+alter table products add column if not exists ai_metadata jsonb not null default '{}'::jsonb;
+
+comment on column products.ai_metadata is
+  'AI ingestion audit: confidence, provider, timestamps, and URLs to original source documents (e.g. Supabase Storage) for compliance evidence.';
+
+create index if not exists idx_products_ai_metadata on products using gin (ai_metadata);
+
+alter table products add column if not exists passport_template_key text;
+comment on column products.passport_template_key is
+  'Optional override for public passport scan page theme (classic | luxury); falls back to profiles.passport_template_key.';
 
 create table if not exists passports (
   id uuid primary key default gen_random_uuid(),
@@ -318,8 +328,5 @@ create index if not exists idx_ownership_records_owner_email on ownership_record
 create index if not exists idx_ownership_records_claimed_at on ownership_records(claimed_at desc);
 
 -- =====================================================
--- VERIFICATION_LOGS: View alias for verifications
+-- VERIFICATION_LOGS view removed (query verifications with RLS instead)
 -- =====================================================
-create or replace view verification_logs as
-select id, passport_id, verification_type, status, reviewed_by, review_notes, created_at
-from verifications;

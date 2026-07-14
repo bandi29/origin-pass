@@ -13,7 +13,11 @@ const categoryEnum = z.enum(CATEGORY_KEYS)
  * Models may also return legacy `{ category, extracted_fields, confidence: number }`; see {@link normalizeRawComplianceExtraction}.
  */
 export const complianceIngestionSchema = z.object({
-  complianceCategory: categoryEnum,
+  /** Gemini often returns title case; normalize before enum check. */
+  complianceCategory: z.preprocess(
+    (val) => (typeof val === "string" ? val.trim().toLowerCase() : val),
+    categoryEnum,
+  ),
   suggestedProductName: z.union([z.string(), z.null()]).optional(),
   /** Flat key/value pairs matching category-schemas field keys for the chosen category */
   complianceData: z.record(z.string(), z.unknown()).default({}),

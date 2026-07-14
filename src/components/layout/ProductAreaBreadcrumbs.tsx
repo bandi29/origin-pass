@@ -5,7 +5,7 @@ import { usePathname } from "@/i18n/navigation"
 import { Breadcrumb, BreadcrumbItem } from "@/components/ui/Breadcrumb"
 
 const MODULE_LABELS: Record<string, string> = {
-  passports: "Passports",
+  passports: "Product Passports",
   authenticity: "Authenticity",
   "qr-identity": "QR Identity",
   ownership: "Ownership",
@@ -36,7 +36,7 @@ function labelForSegment(seg: string) {
   if (MODULE_LABELS[seg]) return MODULE_LABELS[seg]
   if (LEAF_LABELS[seg]) return LEAF_LABELS[seg]
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) {
-    return "Passport"
+    return "Product Passport"
   }
   return prettySegment(seg)
 }
@@ -49,21 +49,25 @@ export function ProductAreaBreadcrumbs() {
     const noLocale =
       pathname.replace(/^\/(en|fr|it)(?=\/|$)/, "") || "/"
     const parts = noLocale.split("/").filter(Boolean)
-    if (parts[0] !== "product") return []
+    if (parts[0] !== "product" && parts[0] !== "dashboard") return []
+    if (parts[0] === "dashboard" && parts[1] !== "product-identity") return []
 
-    const rest = parts.slice(1)
+    const rest = parts[0] === "product" ? parts.slice(1) : parts.slice(2)
+    const basePath =
+      parts[0] === "product" ? "/dashboard/product-identity" : "/dashboard/product-identity"
+
     if (rest.length === 0) {
-      return [{ label: "Product", href: undefined as string | undefined }]
+      return [{ label: "Product Identity", href: undefined as string | undefined }]
     }
 
     const out: { label: string; href?: string }[] = [
-      { label: "Product", href: "/product" },
+      { label: "Product Identity", href: "/dashboard/product-identity" },
     ]
 
     for (let i = 0; i < rest.length; i++) {
       const seg = rest[i]
       const isLast = i === rest.length - 1
-      const path = "/product/" + rest.slice(0, i + 1).join("/")
+      const path = `${basePath}/${rest.slice(0, i + 1).join("/")}`
       const label = labelForSegment(seg)
       if (isLast) {
         out.push({ label })

@@ -7,8 +7,11 @@ import { useReactToPrint } from 'react-to-print'
 import { PrintLabels } from './PrintLabels'
 import { QRCodeSVG } from 'qrcode.react'
 import InfoTooltip from "@/components/ui/InfoTooltip"
+import { ProductPickerCombobox } from "@/components/dashboard/ProductPickerCombobox"
+import { productDisplayLabel } from "@/lib/product-display-label"
 import { validateMaterialComposition, type MaterialEntry } from "@/lib/material-validation"
 import { clearDraft as clearProductDraft } from "@/lib/product-form-draft"
+import { useRouter } from "@/i18n/navigation"
 
 const END_OF_LIFE_OPTIONS = [
     { value: "biodegradable", label: "Biodegradable" },
@@ -20,9 +23,17 @@ const END_OF_LIFE_OPTIONS = [
 interface BatchFormProps {
     products: { id: string; name: string; origin?: string | null; materials?: string | null }[]
     initialProductId?: string
+    returnHref?: string
+    recentProducts?: { id: string; name: string; count: number }[]
 }
 
-export default function BatchForm({ products, initialProductId }: BatchFormProps) {
+export default function BatchForm({
+    products,
+    initialProductId,
+    returnHref = "/dashboard/batches",
+    recentProducts = [],
+}: BatchFormProps) {
+    const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState<CreateBatchResult | null>(null)
     const [quantity, setQuantity] = useState(10)
@@ -233,25 +244,43 @@ export default function BatchForm({ products, initialProductId }: BatchFormProps
             </p>
 
             {step === 1 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                    <div className="max-w-md space-y-2">
                         <label className="text-sm font-medium text-gray-700">
                             Select Product <span className="text-rose-500">*</span>
                         </label>
-                        <select
-                            name="productId"
-                            required
-                            value={productId}
-                            onChange={(event) => setProductId(event.target.value)}
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                        >
-                            <option value="">-- Choose Product --</option>
-                            {products.map(p => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}{p.origin || p.materials ? ` — ${[p.origin, p.materials].filter(Boolean).join(' • ')}` : ''}
-                                </option>
-                            ))}
-                        </select>
+                        <input type="hidden" name="productId" value={productId} />
+                        <ProductPickerCombobox
+                            items={products.map((p) => ({
+                                productId: p.id,
+                                productName: p.name,
+                                meta:
+                                    [p.origin, p.materials].filter(Boolean).join(" · ").trim() || null,
+                            }))}
+                            value={productId || null}
+                            onChange={(id) => setProductId(id ?? "")}
+                            allowAll={false}
+                            placeholder="Choose product…"
+                            className="w-full max-w-md"
+                        />
+                        {recentProducts.length > 0 ? (
+                            <div className="pt-2">
+                                <p className="text-xs font-medium text-slate-500">Recent products</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {recentProducts.map((recent) => (
+                                        <button
+                                            key={recent.id}
+                                            type="button"
+                                            onClick={() => setProductId(recent.id)}
+                                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                        >
+                                            {productDisplayLabel(recent.id, recent.name)}
+                                            <span className="ml-1 text-slate-400">· {recent.count}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -481,7 +510,14 @@ export default function BatchForm({ products, initialProductId }: BatchFormProps
                             <QRCodeSVG value="OP-Preview" size={120} level="M" />
                         </div>
                         <div className="text-sm text-slate-600 space-y-1">
-                            <div className="font-semibold text-slate-900">{products.find(p => p.id === productId)?.name || 'Product Name'}</div>
+                            <div className="font-semibold text-slate-900">
+                                {productId
+                                    ? productDisplayLabel(
+                                          productId,
+                                          products.find((x) => x.id === productId)?.name,
+                                      )
+                                    : "Product Name"}
+                            </div>
                             <div>Crafted by: {artisanName || 'Artisan Name'}</div>
                             <div>Made in: {location || 'City, Country'}</div>
                             <div>Produced on: {producedAt || 'Date'}</div>
@@ -502,27 +538,43 @@ export default function BatchForm({ products, initialProductId }: BatchFormProps
             <div className="flex flex-col sm:flex-row gap-3 justify-between">
                 <button
                     type="button"
-                    onClick={() => setStep(Math.max(1, step - 1))}
-                    disabled={step === 1 || loading}
+                    onClick={() => {
+                        if (step === 1) {
+                            router.push(returnHref)
+                            return
+                        }
+                        setStep((prev) => Math.max(1, prev - 1))
+                    }}
+                    disabled={loading}
                     className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 transition disabled:opacity-50"
                 >
                     Back
                 </button>
 
                 {step < 3 ? (
-                    <button
-                        type="button"
-                        onClick={() => setStep(step + 1)}
-                        disabled={nextDisabled}
-                        className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition disabled:opacity-70"
-                    >
-                        Next
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => router.push(returnHref)}
+                            disabled={loading}
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setStep(step + 1)}
+                            disabled={nextDisabled}
+                            className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-70"
+                        >
+                            Next
+                        </button>
+                    </div>
                 ) : (
                     <button
                         type="submit"
                         disabled={loading}
-                        className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition disabled:opacity-70 flex items-center gap-2 justify-center"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-70"
                     >
                         {loading ? <Loader2 className="animate-spin w-4 h-4" /> : null}
                         Generate Passports

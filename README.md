@@ -51,6 +51,15 @@ NEXT_PUBLIC_BASE_URL=
 
 Each environment should point to a **different Supabase project**.
 
+### AI vision (compliance / photo-to-passport)
+
+For **Upload for AI extraction** on products (photos and **PDFs**), configure a **Google Generative AI** API key from [Google AI Studio](https://aistudio.google.com/apikey). The app accepts any one of: `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_AI_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` (same key value; do not use `NEXT_PUBLIC_*` for secrets).
+
+- **Default model** is `gemini-1.5-flash`. The server calls Google **ListModels** for your API key and only tries names that support `generateContent`, then falls back to a short static list. Override with `GEMINI_VISION_MODEL` in `.env.local` if needed.
+- **OpenAI** (`OPENAI_API_KEY`) is optional and supports **images only**; PDF extraction still requires Gemini.
+
+See `.env.example` for a full template. Restart `npm run dev` after changing env vars.
+
 ## Database Migrations (Automated)
 
 This repo uses the Supabase CLI for migrations:

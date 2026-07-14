@@ -78,7 +78,14 @@ export async function getPassportsForUser(): Promise<PassportRow[]> {
   }))
 }
 
-export async function getProductsForUser(): Promise<{ id: string; name: string }[]> {
+export type ProductForUser = {
+  id: string
+  name: string
+  /** True when Origin or image is missing — not safe to issue a compliant passport. */
+  incomplete: boolean
+}
+
+export async function getProductsForUser(): Promise<ProductForUser[]> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -88,7 +95,7 @@ export async function getProductsForUser(): Promise<{ id: string; name: string }
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("products")
-    .select("id, name")
+    .select("id, name, origin, image_url")
     .eq("brand_id", user.id)
     .order("name")
 
@@ -96,5 +103,14 @@ export async function getProductsForUser(): Promise<{ id: string; name: string }
     console.warn("getProductsForUser error:", error.message)
     return []
   }
-  return (data ?? []) as { id: string; name: string }[]
+
+  return (data ?? []).map((row) => {
+    const r = row as { id: string; name: string; origin?: string | null; image_url?: string | null }
+    return {
+      id: r.id,
+      name: r.name,
+      // EU DPP-mandatory fields. Legacy rows missing either can't enter issuance.
+      incomplete: !r.origin?.trim() || !r.image_url?.trim(),
+    }
+  })
 }

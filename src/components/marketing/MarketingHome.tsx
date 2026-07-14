@@ -150,7 +150,7 @@ export function MarketingHome() {
                 </li>
                 <li className="flex items-center gap-3">
                   <Check className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-                  Free forever plan
+                  Free forever for your first 2 products
                 </li>
               </ul>
             </div>
