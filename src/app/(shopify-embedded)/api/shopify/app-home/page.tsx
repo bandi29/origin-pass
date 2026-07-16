@@ -11,8 +11,10 @@ import { OnboardingGuide } from "@/components/OnboardingGuide"
 import { CertificateField } from "./CertificateField"
 import { EvidenceUpgradeBanner } from "./EvidenceUpgradeBanner"
 import { MerchantCatalogEmptyState } from "./MerchantCatalogEmptyState"
+import { PlanManagementCard } from "./PlanManagementCard"
 import { ProductEvidenceIndicators } from "./ProductEvidenceIndicators"
 import { shouldShowMerchantEmptyState } from "./merchant-empty-state"
+import type { PaidPlan } from "@/lib/shopify-billing"
 import {
   computeBrandDefaultCoverage,
   computeComplianceHealth,
@@ -278,9 +280,12 @@ export default function ShopifyAppHomePage() {
   // Billing tier — gates evidence uploads in the UI (server enforces too).
   const [subscriptionTier, setSubscriptionTier] = useState<"free" | "grower" | "enterprise">("free")
   const [upgrading, setUpgrading] = useState(false)
+  const [billingBusy, setBillingBusy] = useState(false)
   // Every product ever loaded this session, by id — selections keep printing even
   // when a search narrows the visible page.
   const productCacheRef = useRef(new Map<string, PrintableProduct>())
+  const oauthRedirectStartedRef = useRef(false)
+  const cancelPollRef = useRef<number | null>(null)
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(catalogSearch.trim()), 300)
@@ -344,7 +349,8 @@ export default function ShopifyAppHomePage() {
     getSessionToken()
       .then((token) => isStoreConnected(shop, token))
       .then((ok) => {
-        if (active) setConnected(ok)
+        if (!active) return
+        setConnected(ok)
       })
       .finally(() => {
         if (active) setConnectionLoaded(true)
@@ -353,6 +359,31 @@ export default function ShopifyAppHomePage() {
       active = false
     }
   }, [shop])
+
+  // App Store 1.2.1 / 2.3.2: unauthenticated app-home must start OAuth immediately —
+  // no interactive "Link catalog" gate. Escape the Admin iframe via top-level navigation.
+  useEffect(() => {
+    if (!connectionLoaded || connected || !shop || !connectUrl) return
+    if (oauthRedirectStartedRef.current) return
+    oauthRedirectStartedRef.current = true
+    try {
+      const opened = window.open(connectUrl, "_top")
+      if (opened !== null || window.shopify) return
+    } catch {
+      // fall through
+    }
+    try {
+      ;(window.top ?? window).location.href = connectUrl
+    } catch {
+      // If navigation is blocked, the non-interactive connecting UI remains visible.
+    }
+  }, [connectionLoaded, connected, shop, connectUrl])
+
+  useEffect(() => {
+    return () => {
+      if (cancelPollRef.current != null) window.clearInterval(cancelPollRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!shop) return
@@ -494,12 +525,6 @@ export default function ShopifyAppHomePage() {
     })
   }, [qtyAll, products])
 
-  function handleLinkCatalog() {
-    if (!connectUrl) return
-    const top = window.top ?? window
-    top.location.href = connectUrl
-  }
-
   function handleProceedToSync() {
     document.getElementById("catalog-sync-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
@@ -514,22 +539,51 @@ export default function ShopifyAppHomePage() {
     })
   }, [])
 
+  const billingEndpoint = useMemo(() => {
+    if (!shop) return ""
+    return `/api/shopify/billing?shop=${encodeURIComponent(shop)}${host ? `&host=${encodeURIComponent(host)}` : ""}`
+  }, [shop, host])
+
+  const openConfirmationUrl = useCallback((confirmationUrl: string): boolean => {
+    try {
+      const opened = window.open(confirmationUrl, "_top")
+      if (opened !== null || window.shopify) return true
+    } catch {
+      // fall through
+    }
+    try {
+      ;(window.top ?? window).location.href = confirmationUrl
+      return true
+    } catch {
+      return false
+    }
+  }, [])
+
+  const refreshSubscriptionTier = useCallback(async () => {
+    if (!shop) return
+    const token = await getSessionToken()
+    const data = await getStoreConfig(shop, token)
+    setSubscriptionTier(data.subscriptionTier)
+    return data.subscriptionTier
+  }, [shop])
+
   // Start a Shopify Billing upgrade: create the recurring charge, then send the
   // TOP window to Shopify's confirmation page (billing approval cannot run
   // inside the app iframe). The tier flips only via the approval webhook.
   const handleUpgrade = useCallback(
-    async (plan: "grower" | "enterprise") => {
-      if (!shop || upgrading) return
+    async (plan: PaidPlan) => {
+      if (!shop || !billingEndpoint || upgrading || billingBusy) return
       setUpgrading(true)
+      setBillingBusy(true)
       try {
         const token = await getSessionToken()
-        const res = await fetch(`/api/shopify/billing?shop=${encodeURIComponent(shop)}${host ? `&host=${encodeURIComponent(host)}` : ""}`, {
+        const res = await fetch(billingEndpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ plan }),
+          body: JSON.stringify({ action: "upgrade", plan }),
         })
         const data = (await res.json().catch(() => null)) as
           | { ok: boolean; confirmationUrl?: string; message?: string }
@@ -538,27 +592,7 @@ export default function ShopifyAppHomePage() {
           window.shopify?.toast.show(data?.message ?? "Could not start the upgrade. Try again.", { isError: true })
           return
         }
-        // Frame escape — the approval page sets frame-ancestors and MUST load
-        // top-level, never inside the app iframe. Preferred: window.open with
-        // "_top", which App Bridge v4 intercepts and routes through the admin
-        // (works even without raw top-navigation permission). Fallback: direct
-        // top.location assignment (requires transient user activation, which
-        // can expire if the billing API responded slowly).
-        const escaped = (() => {
-          try {
-            const opened = window.open(data.confirmationUrl, "_top")
-            if (opened !== null || window.shopify) return true
-          } catch {
-            // fall through to direct assignment
-          }
-          try {
-            ;(window.top ?? window).location.href = data.confirmationUrl!
-            return true
-          } catch {
-            return false
-          }
-        })()
-        if (!escaped) {
+        if (!openConfirmationUrl(data.confirmationUrl)) {
           window.shopify?.toast.show("Popup blocked — click Upgrade again to open Shopify billing.", {
             isError: true,
           })
@@ -567,10 +601,91 @@ export default function ShopifyAppHomePage() {
         window.shopify?.toast.show("Could not start the upgrade. Try again.", { isError: true })
       } finally {
         setUpgrading(false)
+        setBillingBusy(false)
       }
     },
-    [shop, host, upgrading],
+    [shop, billingEndpoint, upgrading, billingBusy, openConfirmationUrl],
   )
+
+  const handleSwitch = useCallback(
+    async (plan: PaidPlan) => {
+      if (!shop || !billingEndpoint || billingBusy) return
+      setBillingBusy(true)
+      try {
+        const token = await getSessionToken()
+        const res = await fetch(billingEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ action: "switch", plan }),
+        })
+        const data = (await res.json().catch(() => null)) as
+          | { ok: boolean; confirmationUrl?: string; message?: string }
+          | null
+        if (!res.ok || !data?.ok || !data.confirmationUrl) {
+          window.shopify?.toast.show(data?.message ?? "Could not switch plans. Try again.", { isError: true })
+          return
+        }
+        if (!openConfirmationUrl(data.confirmationUrl)) {
+          window.shopify?.toast.show("Popup blocked — try Switch again to open Shopify billing.", {
+            isError: true,
+          })
+        }
+      } catch {
+        window.shopify?.toast.show("Could not switch plans. Try again.", { isError: true })
+      } finally {
+        setBillingBusy(false)
+      }
+    },
+    [shop, billingEndpoint, billingBusy, openConfirmationUrl],
+  )
+
+  const handleCancel = useCallback(async () => {
+    if (!shop || !billingEndpoint || billingBusy) return
+    const confirmed = window.confirm(
+      "Cancel your OriginPass paid plan? You will return to Free after Shopify confirms the cancellation.",
+    )
+    if (!confirmed) return
+    setBillingBusy(true)
+    try {
+      const token = await getSessionToken()
+      const res = await fetch(billingEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ action: "cancel" }),
+      })
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null
+      if (!res.ok || !data?.ok) {
+        window.shopify?.toast.show(data?.message ?? "Could not cancel the plan. Try again.", { isError: true })
+        return
+      }
+      window.shopify?.toast.show(
+        data.message ?? "Cancellation requested; Free after Shopify confirms.",
+      )
+      if (cancelPollRef.current != null) window.clearInterval(cancelPollRef.current)
+      let attempts = 0
+      cancelPollRef.current = window.setInterval(() => {
+        attempts += 1
+        void refreshSubscriptionTier().then((tier) => {
+          if (tier === "free" || attempts >= 12) {
+            if (cancelPollRef.current != null) {
+              window.clearInterval(cancelPollRef.current)
+              cancelPollRef.current = null
+            }
+          }
+        })
+      }, 2500)
+    } catch {
+      window.shopify?.toast.show("Could not cancel the plan. Try again.", { isError: true })
+    } finally {
+      setBillingBusy(false)
+    }
+  }, [shop, billingEndpoint, billingBusy, refreshSubscriptionTier])
 
   // Shared "go set up brand defaults" navigation (onboarding guide + empty state).
   const scrollToBrandDefaults = useCallback(() => {
@@ -692,6 +807,8 @@ export default function ShopifyAppHomePage() {
     </div>
   ) : null
 
+  const awaitingOAuth = Boolean(shop) && (!connectionLoaded || !connected)
+
   return (
     <>
       <ShopifyAppTitleBar />
@@ -706,6 +823,26 @@ export default function ShopifyAppHomePage() {
       ) : null}
       <div className={`min-h-screen bg-[#f6f6f7] px-5 py-8 font-sans text-[#202223] print:hidden ${nativeSaveBarActive ? "pb-8" : "pb-28"}`}>
         <div className="mx-auto w-full max-w-2xl space-y-5">
+        {awaitingOAuth ? (
+          <section
+            aria-labelledby="oauth-connecting-heading"
+            className="rounded-xl border border-slate-200 bg-white p-8 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Loader2 className="h-6 w-6 animate-spin text-[#303030]" aria-hidden />
+              <h1 id="oauth-connecting-heading" className="text-lg font-semibold text-slate-900">
+                Connecting to Shopify…
+              </h1>
+              <p className="max-w-sm text-sm leading-relaxed text-slate-600">
+                Opening authorization so OriginPass can access your catalog. This page is not interactive until
+                the store is linked.
+              </p>
+            </div>
+          </section>
+        ) : (
+          <>
         <header className="space-y-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Store configuration</h1>
@@ -719,11 +856,9 @@ export default function ShopifyAppHomePage() {
                 <span className="font-normal text-emerald-600/90">· {shop.replace(/\.myshopify\.com$/, "")}</span>
               ) : null}
             </span>
-            {connected ? (
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                Catalog linked
-              </span>
-            ) : null}
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+              Catalog linked
+            </span>
           </div>
           <p className="max-w-xl text-sm leading-relaxed text-slate-600">
             Set brand-wide defaults and evidence, then sync products and print QR labels. Products inherit these
@@ -731,34 +866,15 @@ export default function ShopifyAppHomePage() {
           </p>
         </header>
 
-        {!connected ? (
-          <section
-            aria-labelledby="setup-connect-heading"
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
-          >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Step 1 · Connect</p>
-                <h2 id="setup-connect-heading" className="text-base font-semibold text-slate-900">
-                  Link your Shopify catalog
-                </h2>
-                <p className="max-w-md text-sm leading-relaxed text-slate-600">
-                  Authorize OriginPass to read your product catalog so you can sync passports and print Avery label
-                  sheets from this workspace.
-                </p>
-              </div>
-              {connectUrl ? (
-                <button
-                  type="button"
-                  onClick={handleLinkCatalog}
-                  className="inline-flex shrink-0 items-center justify-center self-start rounded-lg bg-[#303030] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_1px_0_rgba(0,0,0,0.08)] transition hover:bg-[#1a1a1a] active:scale-[0.99]"
-                >
-                  Link catalog
-                </button>
-              ) : null}
-            </div>
-          </section>
-        ) : initialDataLoaded && uiProducts.length === 0 && !showMerchantEmptyState ? (
+        <PlanManagementCard
+          tier={subscriptionTier}
+          busy={billingBusy || upgrading}
+          onCancel={() => void handleCancel()}
+          onSwitch={(plan) => void handleSwitch(plan)}
+          onUpgrade={(plan) => void handleUpgrade(plan)}
+        />
+
+        {initialDataLoaded && uiProducts.length === 0 && !showMerchantEmptyState ? (
           <section
             aria-labelledby="setup-sync-heading"
             className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
@@ -1199,10 +1315,12 @@ export default function ShopifyAppHomePage() {
         </div>
 
         <ComplianceFAQ />
+          </>
+        )}
       </div>
       </div>
 
-      {!nativeSaveBarActive ? (
+      {!awaitingOAuth && !nativeSaveBarActive ? (
       <div
         role="region"
         aria-label="Compliance configuration actions"

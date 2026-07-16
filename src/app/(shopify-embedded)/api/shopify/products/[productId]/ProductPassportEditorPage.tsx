@@ -6,6 +6,7 @@ import { ArrowLeft, Check, Loader2, Package } from "lucide-react"
 import { CertificateField, type CertificateFieldHandle } from "../../app-home/CertificateField"
 import {
   getProductPassportEditor,
+  isStoreConnected,
   updateProductPassportFields,
   type ProductPassportEditorData,
 } from "../../app-home/actions"
@@ -89,6 +90,8 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   )
 
   const [loading, setLoading] = useState(true)
+  const [authChecking, setAuthChecking] = useState(true)
+  const [connected, setConnected] = useState(false)
   const [product, setProduct] = useState<ProductPassportEditorData | null>(null)
   const [productionLocation, setProductionLocation] = useState("")
   const [careInstructions, setCareInstructions] = useState("")
@@ -100,6 +103,13 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const [hasProductCertCare, setHasProductCertCare] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const connectUrl = useMemo(() => {
+    if (!shop) return ""
+    const params = new URLSearchParams({ shop })
+    if (host) params.set("host", host)
+    return `/api/shopify/auth?${params.toString()}`
+  }, [shop, host])
 
   const load = useCallback(async () => {
     if (!shop) return
@@ -120,8 +130,42 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   }, [shop, productId])
 
   useEffect(() => {
+    if (!shop) {
+      setAuthChecking(false)
+      return
+    }
+    let active = true
+    getSessionToken()
+      .then((token) => isStoreConnected(shop, token))
+      .then((ok) => {
+        if (!active) return
+        setConnected(ok)
+        if (!ok && connectUrl) {
+          try {
+            const opened = window.open(connectUrl, "_top")
+            if (opened !== null || window.shopify) return
+          } catch {
+            // fall through
+          }
+          try {
+            ;(window.top ?? window).location.href = connectUrl
+          } catch {
+            // non-interactive connecting UI remains
+          }
+        }
+      })
+      .finally(() => {
+        if (active) setAuthChecking(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [shop, connectUrl])
+
+  useEffect(() => {
+    if (!connected) return
     void load()
-  }, [load])
+  }, [connected, load])
 
   const hasUnsavedChanges =
     (productionEditing ? productionLocation : "") !== savedProduction ||
@@ -218,6 +262,15 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
         brandCertPresent: product.brandCertCare,
       })
     : null
+
+  if (authChecking || !connected) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f6f6f7] px-5" role="status" aria-live="polite">
+        <Loader2 className="h-6 w-6 animate-spin text-[#303030]" aria-hidden />
+        <p className="text-sm font-medium text-[#202223]">Connecting to Shopify…</p>
+      </div>
+    )
+  }
 
   if (loading) {
     return (

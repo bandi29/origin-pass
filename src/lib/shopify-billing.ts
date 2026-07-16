@@ -8,6 +8,13 @@
  * its underlying API): create subscription → redirect merchant to Shopify's
  * `confirmationUrl` → on approval Shopify fires the `app_subscriptions/update`
  * webhook with status ACTIVE → we persist the tier.
+ *
+ * Cancel / downgrade uses `appSubscriptionCancel`; the webhook then sets the
+ * org back to free. Plan switches cancel the tracked charge then create a new
+ * subscription (Shopify does not mutate an active recurring charge in place).
+ *
+ * Shopify Admin merchants must use this module only — never Paddle
+ * (`src/lib/paddle.ts` is web-portal billing).
  */
 
 import { SHOPIFY_API_VERSION, isValidShopDomain } from "@/lib/shopify"
@@ -60,6 +67,23 @@ export async function getSubscriptionTier(shop: string): Promise<SubscriptionTie
     return normalizeTier((data as { subscription_tier?: string | null } | null)?.subscription_tier)
   } catch {
     return "free"
+  }
+}
+
+/** Shopify AppSubscription GID tracked for this shop, if any. */
+export async function getTrackedSubscriptionId(shop: string): Promise<string | null> {
+  if (!isValidShopDomain(shop)) return null
+  try {
+    const supabase = createServerSupabaseClient()
+    const { data } = await supabase
+      .from("organizations")
+      .select("shopify_subscription_id")
+      .eq("shop_domain", shop)
+      .maybeSingle()
+    const id = (data as { shopify_subscription_id?: string | null } | null)?.shopify_subscription_id
+    return typeof id === "string" && id.trim() ? id.trim() : null
+  } catch {
+    return null
   }
 }
 
@@ -154,6 +178,89 @@ export async function createSubscriptionConfirmationUrl(input: {
     console.error("[shopify-billing] subscription create failed:", err)
     return { error: "Billing request failed. Please try again." }
   }
+}
+
+/**
+ * Cancel the merchant's active app subscription via Admin GraphQL.
+ * Tier flips to free only when `app_subscriptions/update` arrives — do not
+ * mutate `subscription_tier` here.
+ */
+export async function cancelAppSubscription(input: {
+  shop: string
+  adminToken: string
+  subscriptionId: string
+}): Promise<{ ok: true; status: string | null } | { error: string }> {
+  const { shop, adminToken, subscriptionId } = input
+  if (!isValidShopDomain(shop) || !adminToken) return { error: "Store not connected." }
+  if (!subscriptionId.trim()) return { error: "No active Shopify subscription to cancel." }
+
+  const mutation = /* GraphQL */ `
+    mutation CancelAppSubscription($id: ID!) {
+      appSubscriptionCancel(id: $id) {
+        appSubscription { id status }
+        userErrors { field message }
+      }
+    }
+  `
+
+  try {
+    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": adminToken },
+      body: JSON.stringify({ query: mutation, variables: { id: subscriptionId } }),
+      cache: "no-store",
+    })
+    if (!res.ok) return { error: "Could not reach Shopify billing." }
+
+    const json = (await res.json()) as {
+      errors?: Array<{ message?: string }>
+      data?: {
+        appSubscriptionCancel?: {
+          appSubscription?: { id?: string; status?: string } | null
+          userErrors?: Array<{ message?: string }>
+        }
+      }
+    }
+
+    const result = json.data?.appSubscriptionCancel
+    const userError = result?.userErrors?.[0]?.message ?? json.errors?.[0]?.message
+    if (userError) return { error: userError }
+    if (!result?.appSubscription?.id) {
+      return { error: "Shopify did not confirm the cancellation." }
+    }
+    return { ok: true, status: result.appSubscription.status ?? null }
+  } catch (err) {
+    console.error("[shopify-billing] subscription cancel failed:", err)
+    return { error: "Billing cancellation failed. Please try again." }
+  }
+}
+
+/**
+ * Cancel the tracked charge (if any), then create a new paid plan charge.
+ * Returns Shopify's confirmation URL for top-level approval.
+ */
+export async function switchPaidPlan(input: {
+  shop: string
+  adminToken: string
+  plan: PaidPlan
+  returnUrl: string
+  currentSubscriptionId?: string | null
+}): Promise<{ confirmationUrl: string; subscriptionId: string } | { error: string }> {
+  const tracked = input.currentSubscriptionId?.trim() || (await getTrackedSubscriptionId(input.shop))
+  if (tracked) {
+    const cancelled = await cancelAppSubscription({
+      shop: input.shop,
+      adminToken: input.adminToken,
+      subscriptionId: tracked,
+    })
+    if ("error" in cancelled) return cancelled
+  }
+  return createSubscriptionConfirmationUrl({
+    shop: input.shop,
+    adminToken: input.adminToken,
+    plan: input.plan,
+    returnUrl: input.returnUrl,
+  })
 }
 
 /**

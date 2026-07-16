@@ -1,10 +1,36 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it, vi } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { QRIdentityManagementClient } from "./QRIdentityManagementClient"
+
+beforeAll(() => {
+  // Recharts ResponsiveContainer observes layout; without this, happy-dom can OOM.
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+})
+
+const { stableSearchParams, stableRouter } = vi.hoisted(() => ({
+  stableSearchParams: new URLSearchParams(),
+  stableRouter: {
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    refresh: vi.fn(),
+  },
+}))
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => stableSearchParams,
+  usePathname: () => "/",
+  useRouter: () => stableRouter,
+}))
 
 vi.mock("@/i18n/navigation", () => ({
   Link: ({ href, className, children }: { href: string; className?: string; children: ReactNode }) => (
@@ -12,6 +38,40 @@ vi.mock("@/i18n/navigation", () => ({
       {children}
     </a>
   ),
+  useRouter: () => stableRouter,
+  usePathname: () => "/",
+}))
+
+vi.mock("@/components/ui/Toast", () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  }),
+  useOptionalToast: () => null,
+}))
+
+vi.mock("recharts", async () => {
+  const React = await import("react")
+  const Passthrough = ({ children }: { children?: ReactNode }) =>
+    React.createElement("div", { "data-testid": "recharts-stub" }, children)
+  const Null = () => null
+  return {
+    ResponsiveContainer: Passthrough,
+    LineChart: Passthrough,
+    Line: Null,
+    BarChart: Passthrough,
+    Bar: Null,
+    XAxis: Null,
+    YAxis: Null,
+    CartesianGrid: Null,
+    Tooltip: Null,
+    Cell: Null,
+  }
+})
+
+vi.mock("@/components/dashboard/qr-identity/BatchOperationsCard", () => ({
+  BatchOperationsCard: () => null,
 }))
 
 const emptyData = {

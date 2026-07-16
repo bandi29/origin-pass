@@ -1,16 +1,48 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import ProductForm from "./ProductForm"
 import { uploadProductImageClient, validateFile } from "@/lib/upload-product-image-client"
 import { createProduct } from "@/actions/create-product"
 
+beforeAll(() => {
+  // Headless UI Listbox (StudioNativeSelect) uses floating-ui / layout observers.
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+})
+
 vi.mock("@/i18n/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  usePathname: () => "/",
 }))
+
+/** StudioNativeSelect is a Headless UI Listbox, not a native <select>. */
+async function selectStudioOption(
+  user: ReturnType<typeof userEvent.setup>,
+  trigger: HTMLElement,
+  optionName: RegExp | string,
+) {
+  await user.click(trigger)
+  const option = await screen.findByRole("option", { name: optionName })
+  await user.click(option)
+}
+
+function getSelectTrigger(id: string): HTMLElement {
+  const el = document.getElementById(id)
+  if (!el) throw new Error(`Missing select trigger #${id}`)
+  return el
+}
 
 vi.mock("@/actions/create-product", () => ({
   createProduct: vi.fn(),
@@ -181,15 +213,21 @@ describe("ProductForm", () => {
     const user = userEvent.setup()
     render(<ProductForm />)
 
-    await user.selectOptions(screen.getByRole("combobox", { name: /Country/i }), "India")
+    await selectStudioOption(user, getSelectTrigger("origin-country"), "India")
 
-    const stateSelect = screen.getByRole("combobox", { name: /State \/ Region/i })
-    expect(stateSelect.querySelectorAll("option").length).toBeGreaterThan(1)
+    const stateTrigger = await waitFor(() => getSelectTrigger("origin-state"))
+    await user.click(stateTrigger)
+    const stateOptions = await screen.findAllByRole("option")
+    const realStates = stateOptions.filter((opt) => {
+      const text = opt.textContent?.trim() ?? ""
+      return text.length > 0 && !/select state/i.test(text)
+    })
+    expect(realStates.length).toBeGreaterThan(0)
 
-    const firstStateOption = Array.from(stateSelect.querySelectorAll("option")).find((option) => option.value)
-    expect(firstStateOption).toBeDefined()
-    await user.selectOptions(stateSelect, firstStateOption!.value)
-    expect(stateSelect).toHaveValue(firstStateOption!.value)
+    const firstState = realStates[0]!
+    const stateName = firstState.textContent!.trim()
+    await user.click(firstState)
+    expect(stateTrigger).toHaveTextContent(stateName)
   })
 
   it("shows city autocomplete suggestions and allows selecting one", async () => {
@@ -203,7 +241,7 @@ describe("ProductForm", () => {
     const user = userEvent.setup()
     render(<ProductForm />)
 
-    await user.selectOptions(screen.getByRole("combobox", { name: /Country/i }), "Italy")
+    await selectStudioOption(user, getSelectTrigger("origin-country"), "Italy")
     await user.type(screen.getByLabelText(/City \/ Place/i), "Flo")
 
     await waitFor(() => {
