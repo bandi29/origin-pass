@@ -1,4 +1,5 @@
-import { Braces, CheckCircle2, QrCode, Radio, ShieldCheck } from "lucide-react"
+import Image from "next/image"
+import { Braces, CheckCircle2, QrCode, Radio } from "lucide-react"
 import { twMerge } from "tailwind-merge"
 import { marketingIconBoxClass } from "@/components/marketing/marketingLayout"
 
@@ -69,9 +70,13 @@ export function PassportPagePreviewCard({
             Verified Authentic
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900">
-              <ShieldCheck className="h-5 w-5 text-white" aria-hidden />
-            </div>
+            <Image
+              src="/brand/originpass-icon.png"
+              alt=""
+              width={32}
+              height={32}
+              className="h-8 w-8 shrink-0 rounded-lg"
+            />
             <span className="text-sm font-bold tracking-tight text-slate-900">OriginPass</span>
           </div>
           {showStructuredDataTags ? (

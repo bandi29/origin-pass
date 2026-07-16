@@ -3,9 +3,9 @@
 
 client_id = "f91b78bdc3c607ebaecbd6eb349a7d3e"
 name = "OriginPass"
-# Production URLs — requires Next.js deployed at this host for the admin sidebar to work.
-# Local dev: run `npm run shopify:dev` (tunnel + dev-store URL override). Do NOT run `npm run dev` separately.
-application_url = "https://originpass.com"
+# Production host — Vercel deployment (originpass.com DNS can point here later).
+# Local tunnel overrides still apply when running `npm run shopify:dev`.
+application_url = "https://origin-pass.vercel.app"
 embedded = true
 
 [build]
@@ -38,4 +38,4 @@ api_version = "2024-10"
 scopes = "read_products,write_products"
 
 [auth]
-redirect_urls = ["https://originpass.com/api/shopify/auth/callback"]
+redirect_urls = ["https://origin-pass.vercel.app/api/shopify/auth/callback"]

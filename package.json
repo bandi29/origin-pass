@@ -26,6 +26,8 @@
     "shopify:embed:check": "node scripts/check-shopify-embed.mjs",
     "shopify:audit:sandbox": "node scripts/shopify-sandbox-audit.mjs",
     "shopify:seed-demo": "node scripts/seed-shopify-sandbox-demo.mjs",
+    "demo:record": "node demo/record-full-demo.mjs",
+    "demo:record:short": "node demo/record-demo.mjs",
     "shopify:seed-products": "tsx scripts/seedProducts.ts",
     "shopify:seed-products:template": "tsx scripts/seedProducts.ts --write-template",
     "test:load:passport": "k6 run tests/load/passportLoad.js",

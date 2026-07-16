@@ -64,9 +64,21 @@ export async function getSubscriptionTier(shop: string): Promise<SubscriptionTie
 }
 
 /**
+ * Prefer test charges unless production live billing is explicitly enabled.
+ *
+ * - Default / App Store review: `test: true` (no real card charge)
+ * - `SHOPIFY_BILLING_LIVE=1`: live charges for production merchants
+ * - `SHOPIFY_BILLING_FORCE_TEST=1`: keeps test mode even when LIVE=1
+ *   (use during App Store review so $29 / $79 upgrades stay sandboxed)
+ */
+export function shouldUseShopifyTestBilling(): boolean {
+  if (process.env.SHOPIFY_BILLING_FORCE_TEST === "1") return true
+  return process.env.SHOPIFY_BILLING_LIVE !== "1"
+}
+
+/**
  * Create the recurring charge and return Shopify's confirmation URL the merchant
- * must approve. Test-mode charges unless explicitly disabled for production
- * (`SHOPIFY_BILLING_LIVE=1`) — App Store review requires test charges to work.
+ * must approve. Defaults to test-mode charges; see {@link shouldUseShopifyTestBilling}.
  */
 export async function createSubscriptionConfirmationUrl(input: {
   shop: string
@@ -78,6 +90,7 @@ export async function createSubscriptionConfirmationUrl(input: {
   if (!isValidShopDomain(shop) || !adminToken) return { error: "Store not connected." }
 
   const planDef = PAID_PLANS[plan]
+  const useTestCharge = shouldUseShopifyTestBilling()
   const mutation = /* GraphQL */ `
     mutation CreateAppSubscription($name: String!, $returnUrl: URL!, $test: Boolean!, $price: Decimal!) {
       appSubscriptionCreate(
@@ -111,7 +124,7 @@ export async function createSubscriptionConfirmationUrl(input: {
         variables: {
           name: planDef.name,
           returnUrl,
-          test: process.env.SHOPIFY_BILLING_LIVE !== "1",
+          test: useTestCharge,
           price: planDef.price.toFixed(2),
         },
       }),

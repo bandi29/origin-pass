@@ -222,6 +222,9 @@ export default function ShopifyAppHomePage() {
   const searchParams = useSearchParams()
   const shop = searchParams.get("shop") ?? ""
   const host = searchParams.get("host") ?? ""
+  /** Recording/storyboard only: pretend catalog is empty until the first Sync in this session. */
+  const storyboardFresh = searchParams.get("storyboard") === "fresh"
+  const [freshUnlocked, setFreshUnlocked] = useState(!storyboardFresh)
 
   const connectUrl = useMemo(() => {
     if (!shop) return ""
@@ -416,7 +419,10 @@ export default function ShopifyAppHomePage() {
     onDiscard: handleDiscard,
   })
 
-  const allSelected = products.length > 0 && products.every((p) => selected.has(p.id))
+  // Storyboard `?storyboard=fresh` hides the catalog until Sync runs (first-install demo).
+  const uiProducts = freshUnlocked ? products : []
+  const uiCatalogTotal = freshUnlocked ? catalogTotal : 0
+
   // Resolve from the session cache so selections made before a search/pagination
   // change still print, even when not in the currently visible page.
   const selectedProducts = useMemo(
@@ -426,7 +432,7 @@ export default function ShopifyAppHomePage() {
         .filter((p): p is PrintableProduct => Boolean(p)),
     // `products` refreshes cached identities after a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected, products],
+    [selected, products, freshUnlocked],
   )
   const sheetProducts = useMemo(
     () =>
@@ -438,34 +444,36 @@ export default function ShopifyAppHomePage() {
   )
   const canExportLabels = selectedProducts.length > 0
 
-  const brandCoverage = useMemo(() => computeBrandDefaultCoverage(products), [products])
-  const complianceHealth = useMemo(() => computeComplianceHealth(products), [products])
+  const brandCoverage = useMemo(() => computeBrandDefaultCoverage(uiProducts), [uiProducts])
+  const complianceHealth = useMemo(() => computeComplianceHealth(uiProducts), [uiProducts])
   const storeWideBrandCertCount = useMemo(() => {
-    if (products.length === 0) return 0
-    const brandCerts = products[0].lineage.brandCerts
+    if (uiProducts.length === 0) return 0
+    const brandCerts = uiProducts[0].lineage.brandCerts
     return (brandCerts.productionLocation ? 1 : 0) + (brandCerts.careInstructions ? 1 : 0)
-  }, [products])
+  }, [uiProducts])
   const missingBrandEvidence = storeWideBrandCertCount === 0
   // "Review" surfaces everything not audit-ready: conflicts AND awaiting-evidence
   // products (matches all buckets the compliance banner counts).
   const visibleProducts = useMemo(
     () =>
       conflictFilter
-        ? products.filter((p) => productHasConflict(p.lineage) || !productIsAuditReady(p.lineage))
-        : products,
-    [products, conflictFilter],
+        ? uiProducts.filter((p) => productHasConflict(p.lineage) || !productIsAuditReady(p.lineage))
+        : uiProducts,
+    [uiProducts, conflictFilter],
   )
+  const allSelected =
+    visibleProducts.length > 0 && visibleProducts.every((p) => selected.has(p.id))
 
   const initialDataLoaded = productsLoaded && configLoaded && connectionLoaded
   const showMerchantEmptyState = useMemo(
     () =>
       initialDataLoaded &&
-      shouldShowMerchantEmptyState(products.length, {
+      shouldShowMerchantEmptyState(uiProducts.length, {
         connected,
         productionLocation: savedLocation,
         careInstructions: savedInstructions,
       }),
-    [initialDataLoaded, products.length, connected, savedLocation, savedInstructions],
+    [initialDataLoaded, uiProducts.length, connected, savedLocation, savedInstructions],
   )
 
   // Stable identity (functional setState) so memoized rows skip re-renders.
@@ -611,6 +619,7 @@ export default function ShopifyAppHomePage() {
         setSyncMessage({ ok: started.ok, text: started.message })
         if (started.ok || started.capped) {
           setLastSyncedAt(new Date().toISOString())
+          setFreshUnlocked(true)
           await loadProducts() // capped runs still committed partial data
         }
         return
@@ -637,6 +646,7 @@ export default function ShopifyAppHomePage() {
           })
           if (progress.status === "done") {
             setLastSyncedAt(new Date().toISOString())
+            setFreshUnlocked(true)
             await loadProducts()
           }
           return
@@ -655,6 +665,12 @@ export default function ShopifyAppHomePage() {
       window.clearInterval(inFlightPoll)
       syncInFlightRef.current = false
       setSyncing(false)
+      // Demo storyboard: always reveal the real catalog after a Sync attempt so
+      // recording can continue even when App Bridge session tokens are unavailable.
+      if (storyboardFresh) {
+        setFreshUnlocked(true)
+        void loadProducts()
+      }
     }
   }
 
@@ -742,7 +758,7 @@ export default function ShopifyAppHomePage() {
               ) : null}
             </div>
           </section>
-        ) : initialDataLoaded && products.length === 0 && !showMerchantEmptyState ? (
+        ) : initialDataLoaded && uiProducts.length === 0 && !showMerchantEmptyState ? (
           <section
             aria-labelledby="setup-sync-heading"
             className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
@@ -769,7 +785,7 @@ export default function ShopifyAppHomePage() {
         ) : null}
 
         {/* First-run setup checklist — auto-hides once the catalog has products. */}
-        {initialDataLoaded && products.length === 0 ? (
+        {initialDataLoaded && uiProducts.length === 0 ? (
           <OnboardingGuide
             brandDefaultsSet={Boolean(savedLocation.trim() || savedInstructions.trim())}
             syncing={syncing}
@@ -784,7 +800,7 @@ export default function ShopifyAppHomePage() {
         <div id="brand-defaults-section" className={`${cardClass} scroll-mt-4 space-y-5`}>
           <div className="min-w-0 space-y-1.5">
             <h2 className="text-sm font-semibold leading-snug text-[#202223]">Brand defaults</h2>
-            {products.length > 0 ? (
+            {uiProducts.length > 0 ? (
               <p className="text-xs leading-relaxed text-[#6d7175]">
                 Currently powering {brandCoverage.productionInherited} of {brandCoverage.total} passports
                 (origin) · {brandCoverage.careInherited} of {brandCoverage.total} (care)
@@ -919,7 +935,7 @@ export default function ShopifyAppHomePage() {
               onSync={() => void handleSyncProducts()}
               onConfigure={scrollToBrandDefaults}
             />
-          ) : products.length === 0 ? (
+          ) : uiProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#c9cccf] bg-[#fafbfb] px-6 py-10 text-center">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#f1f2f3] text-[#6d7175]">
                 <Package className="h-5 w-5" strokeWidth={1.5} aria-hidden />
@@ -945,16 +961,17 @@ export default function ShopifyAppHomePage() {
             </div>
           ) : (
             <>
-              {products.length > 0 ? (
+              {uiProducts.length > 0 ? (
                 <div
+                  id="compliance-health-section"
                   className={`rounded-lg border px-4 py-3 ${
-                    missingBrandEvidence
+                    missingBrandEvidence || complianceHealth.awaitingEvidence + complianceHealth.needAttention > 0
                       ? "border-amber-200 bg-amber-50/70"
                       : "border-[#e3e3e3] bg-[#fafbfb]"
                   }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
+                    <div className="min-w-0 flex-1 space-y-1.5">
                       <p className="text-sm font-semibold text-[#202223]">
                         Compliance health · {complianceHealth.auditReady} of {complianceHealth.total} passports
                         audit-ready
@@ -967,26 +984,57 @@ export default function ShopifyAppHomePage() {
                       </p>
                       {missingBrandEvidence ? (
                         <p className="text-xs leading-relaxed text-amber-950/90">
-                          Your products are inheriting text defaults, but require a verifying document upload to become
-                          legally audit-ready.
+                          Brand defaults have text but no verifying documents yet. Upload evidence under Brand
+                          defaults above (Grower), or use Review to open each product and attach proof one by one.
                         </p>
                       ) : (
                         <p className="text-xs leading-relaxed text-[#6d7175]">
-                          Audit-ready means every field inherits verified brand evidence or has its own product proof.
-                          Products with an unverified claim need product-specific evidence before their passport is
-                          defensible.
+                          Audit-ready means every field inherits verified brand evidence or has its own product
+                          proof. Review filters the catalog to incomplete passports so you can Edit and attach
+                          documents.
                         </p>
                       )}
+                      {conflictFilter ? (
+                        <p className="text-xs font-medium text-amber-950">
+                          Filter on — catalog below shows only passports that still need evidence or have
+                          unverified overrides. Open Edit on a row, attach a document, then return here.
+                        </p>
+                      ) : null}
                     </div>
                     {complianceHealth.needAttention + complianceHealth.awaitingEvidence > 0 ? (
                       <button
                         type="button"
-                        onClick={() => setConflictFilter((prev) => !prev)}
-                        className={`inline-flex shrink-0 items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 transition hover:bg-amber-100 ${focusRingClass}`}
+                        aria-pressed={conflictFilter}
+                        onClick={() => {
+                          setConflictFilter((prev) => {
+                            const next = !prev
+                            if (!prev) {
+                              // Entering Review — jump to the filtered catalog.
+                              window.requestAnimationFrame(() => {
+                                document.getElementById("catalog-section")?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                })
+                              })
+                            }
+                            return next
+                          })
+                        }}
+                        className={`inline-flex shrink-0 items-center rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${focusRingClass} ${
+                          conflictFilter
+                            ? "border-[#c9cccf] bg-white text-[#202223] hover:bg-[#f6f6f7]"
+                            : "border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100"
+                        }`}
                       >
-                        {conflictFilter ? "Show all" : "Review"}
+                        {conflictFilter
+                          ? "Show all products"
+                          : `Review incomplete (${complianceHealth.needAttention + complianceHealth.awaitingEvidence})`}
                       </button>
-                    ) : null}
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
+                        All audit-ready
+                      </span>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -994,7 +1042,27 @@ export default function ShopifyAppHomePage() {
               {/* Catalog shell — single padded flex control row (Select all ·
                   search · Qty stepper · Apply) on the same px-3 inset as the
                   product rows below, so all borders share one gridline. */}
-              <div className="overflow-hidden rounded-lg border border-[#e3e3e3] bg-white">
+              <div
+                id="catalog-section"
+                className={`scroll-mt-4 overflow-hidden rounded-lg border bg-white ${
+                  conflictFilter ? "border-amber-300 ring-1 ring-amber-200" : "border-[#e3e3e3]"
+                }`}
+              >
+                {conflictFilter ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <p className="text-xs font-medium text-amber-950">
+                      Showing {visibleProducts.length.toLocaleString()} incomplete passport
+                      {visibleProducts.length === 1 ? "" : "s"} — click Edit to attach evidence
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setConflictFilter(false)}
+                      className={`text-xs font-semibold text-amber-950 underline-offset-2 hover:underline ${focusRingClass}`}
+                    >
+                      Clear filter
+                    </button>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#ebebeb] px-3 py-2.5">
                   <button
                     type="button"
@@ -1002,7 +1070,7 @@ export default function ShopifyAppHomePage() {
                       setSelected((prev) =>
                         allSelected
                           ? new Set()
-                          : new Set([...prev, ...products.map((p) => p.id)]),
+                          : new Set([...prev, ...visibleProducts.map((p) => p.id)]),
                       )
                     }
                     className={`shrink-0 rounded text-xs font-medium text-[#6d7175] transition-colors hover:text-[#202223] ${focusRingClass}`}
@@ -1042,7 +1110,7 @@ export default function ShopifyAppHomePage() {
 
                 {conflictFilter && visibleProducts.length === 0 ? (
                   <p className="px-3 py-3 text-sm text-[#6d7175]">
-                    No products with unverified claims right now.
+                    No incomplete passports right now — every product is audit-ready.
                   </p>
                 ) : null}
 
@@ -1071,14 +1139,15 @@ export default function ShopifyAppHomePage() {
               {/* Pagination footer: honest count + Load more for large catalogs. */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-[#6d7175]">
-                  Showing {products.length.toLocaleString()} of {catalogTotal.toLocaleString()} product
-                  {catalogTotal === 1 ? "" : "s"}
+                  {conflictFilter
+                    ? `Showing ${visibleProducts.length.toLocaleString()} incomplete of ${uiCatalogTotal.toLocaleString()} product${uiCatalogTotal === 1 ? "" : "s"}`
+                    : `Showing ${uiProducts.length.toLocaleString()} of ${uiCatalogTotal.toLocaleString()} product${uiCatalogTotal === 1 ? "" : "s"}`}
                   {selected.size > 0 ? ` · ${selected.size.toLocaleString()} selected` : ""}
                 </p>
-                {products.length < catalogTotal ? (
+                {uiProducts.length < uiCatalogTotal ? (
                   <button
                     type="button"
-                    onClick={() => void loadProducts(products.length)}
+                    onClick={() => void loadProducts(uiProducts.length)}
                     disabled={loadingMore}
                     className={`inline-flex items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-3 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClass}`}
                   >
@@ -1090,7 +1159,7 @@ export default function ShopifyAppHomePage() {
             </>
           )}
 
-          {products.length > 0 ? (
+          {uiProducts.length > 0 ? (
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"

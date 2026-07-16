@@ -1,6 +1,6 @@
 import { Suspense } from "react"
+import Image from "next/image"
 import { Link } from "@/i18n/navigation"
-import { ShieldCheck } from "lucide-react"
 import { WideContainer } from "@/components/layout/Containers"
 import { Container } from "@/components/ui/Container"
 import HeaderAuthStatus from "@/components/layout/HeaderAuthStatus"
@@ -14,9 +14,14 @@ export function SiteHeader({ variant = "narrow" }: { variant?: LayoutVariant }) 
         <header className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white/90 backdrop-blur-md">
             <ShellContainer className="h-16 flex items-center justify-between gap-4">
                 <Link href="/" className="flex items-center gap-2 font-bold text-slate-900 text-lg">
-                    <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-                        <ShieldCheck className="w-5 h-5 text-white" />
-                    </div>
+                    <Image
+                        src="/brand/originpass-icon.png"
+                        alt=""
+                        width={32}
+                        height={32}
+                        className="h-8 w-8 rounded-lg"
+                        priority
+                    />
                     OriginPass
                 </Link>
                 <div className="flex items-center gap-3">

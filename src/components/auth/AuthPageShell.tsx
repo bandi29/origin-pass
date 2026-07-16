@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import Image from "next/image"
 import { authUi } from "@/components/auth/auth-ui"
 import { Link } from "@/i18n/navigation"
 import { SiteFooter, SiteHeader } from "@/components/layout/Shell"
@@ -33,7 +34,18 @@ export function AuthPageShell({
             <div className={authUi.marketingPanel}>
               <div className={authUi.marketingGradient} aria-hidden />
               <div className={authUi.marketingContent}>
-                <p className={authUi.marketingKicker}>OriginPass</p>
+                <p className={authUi.marketingKicker}>
+                  <span className="inline-flex items-center gap-2 normal-case tracking-normal">
+                    <Image
+                      src="/brand/originpass-icon.png"
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="h-5 w-5 rounded-md"
+                    />
+                    OriginPass
+                  </span>
+                </p>
                 <h2 className={authUi.marketingTitle}>{marketing.title}</h2>
                 <p className={authUi.marketingBody}>{marketing.body}</p>
               </div>

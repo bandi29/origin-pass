@@ -1,7 +1,7 @@
 "use client"
 
+import Image from "next/image"
 import NextLink from "next/link"
-import { ShieldCheck } from "lucide-react"
 import { resolvePassportPublicHref } from "@/components/templates/passport-public-href"
 
 type Props = {
@@ -25,11 +25,14 @@ export function ConsumerScanTopBar({ brandHomeUrl, marketingHomeHref }: Props) {
 
   const mark = (
     <>
-      {/* Brand-navy chip matches the studio sidebar and dashboard nav mark so
-          the consumer header feels like it belongs to the same product family. */}
-      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand shadow-sm">
-        <ShieldCheck className="h-4 w-4 text-white" aria-hidden />
-      </span>
+      <Image
+        src="/brand/originpass-icon.png"
+        alt=""
+        width={32}
+        height={32}
+        className="h-8 w-8 rounded-xl shadow-sm"
+        aria-hidden
+      />
       <span className="text-sm font-semibold tracking-tight text-slate-900">OriginPass</span>
     </>
   )

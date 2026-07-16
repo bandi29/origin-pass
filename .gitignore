@@ -48,3 +48,9 @@ next-env.d.ts
 # Shopify CLI local state
 .shopify/
 .shopify.lock
+
+# Local demo recording intermediates
+demo/*.prev-*.webm
+demo/frames-audit/
+demo/frames-tmp/
+demo/*.rtfd/

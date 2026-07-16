@@ -23,6 +23,7 @@ export function MarketingJsonLd({ locale }: Props) {
         "@id": `${url}#org`,
         name: "OriginPass",
         url,
+        logo: `${base}/brand/originpass-icon.png`,
         description: "Digital Product Passport and product traceability for authentic brands.",
       },
       {

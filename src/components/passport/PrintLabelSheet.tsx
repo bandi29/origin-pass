@@ -156,18 +156,32 @@ export function PrintLabelSheet({
       ? "@page { size: 2in 2in; margin: 0; }"
       : "@page { size: letter portrait; margin: 0; }"
 
+  // Screen preview: wrap stickers in a compact grid so selecting many SKUs
+  // does not produce a single endless vertical column (unreadable in admin).
+  // Print CSS still emits one 2×2 sticker per page for the physical roll.
+  const THERMAL_SCREEN_PREVIEW_CAP = 24
+  const thermalScreenLabels = useMemo(() => {
+    if (labelFormat !== "thermal") return expandedLabels
+    return expandedLabels.slice(0, THERMAL_SCREEN_PREVIEW_CAP)
+  }, [expandedLabels, labelFormat])
+  const thermalScreenHidden = Math.max(0, expandedLabels.length - thermalScreenLabels.length)
+
   const printStyles =
     labelFormat === "thermal"
       ? `
         .thermal-roll-root {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(2in, 2in));
+          justify-content: center;
           gap: 1rem;
+          width: 100%;
+          max-width: 56rem;
         }
         @media print {
           .thermal-roll-root {
             display: block;
+            width: auto !important;
+            max-width: none !important;
             height: auto !important;
             margin: 0 !important;
             margin-bottom: 0 !important;
@@ -175,6 +189,7 @@ export function PrintLabelSheet({
             padding-bottom: 0 !important;
             gap: 0;
           }
+          .thermal-screen-only { display: none !important; }
           /* Force a new sticker per page, but never after the last cell. */
           .thermal-label:not(:last-child) {
             break-after: page;
@@ -345,14 +360,34 @@ export function PrintLabelSheet({
             No products selected. Pick at least one product to print labels.
           </p>
         ) : labelFormat === "thermal" ? (
-          <div
-            id="avery-print-root"
-            data-format="thermal"
-            className="thermal-roll-root mx-auto w-full max-w-5xl print:mx-0 print:mb-0 print:max-w-none print:h-auto print:pb-0"
-          >
-            {expandedLabels.map((product) => (
-              <ThermalLabelCell key={product.labelKey} product={product} />
-            ))}
+          <div className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-4 print:mx-0 print:mb-0 print:max-w-none print:gap-0 print:p-0">
+            {thermalScreenHidden > 0 ? (
+              <p className="thermal-screen-only rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-center text-sm text-neutral-600 shadow-sm print:hidden">
+                Previewing {thermalScreenLabels.length} of {totalStickers.toLocaleString()} thermal stickers in a
+                grid. Print still outputs the full roll (one 2×2 sticker per slice).
+              </p>
+            ) : (
+              <p className="thermal-screen-only rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-center text-sm text-neutral-600 shadow-sm print:hidden">
+                On-screen grid preview · print outputs one 2×2 sticker per thermal slice
+              </p>
+            )}
+            <div
+              id="avery-print-root"
+              data-format="thermal"
+              className="thermal-roll-root mx-auto print:mx-0 print:mb-0 print:h-auto print:pb-0"
+            >
+              {/* Screen: capped grid. Print: full expanded set (hidden extras still print). */}
+              {thermalScreenLabels.map((product) => (
+                <ThermalLabelCell key={product.labelKey} product={product} />
+              ))}
+              {thermalScreenHidden > 0
+                ? expandedLabels.slice(THERMAL_SCREEN_PREVIEW_CAP).map((product) => (
+                    <div key={product.labelKey} className="hidden print:block">
+                      <ThermalLabelCell product={product} />
+                    </div>
+                  ))
+                : null}
+            </div>
           </div>
         ) : (
           <div

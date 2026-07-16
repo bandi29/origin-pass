@@ -289,6 +289,15 @@ async function resolveAccessToken(shop: string): Promise<string> {
   const fromEnv = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?.trim()
   if (fromEnv) return fromEnv
 
+  // Prefer the shared refresh helper so expired offline tokens are rotated first.
+  try {
+    const { getShopifyAdminToken } = await import("../src/lib/shopify-admin-token")
+    const refreshed = await getShopifyAdminToken(shop)
+    if (refreshed) return refreshed
+  } catch {
+    // Fall through to direct column read if the helper cannot load in this context.
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) {

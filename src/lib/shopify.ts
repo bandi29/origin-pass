@@ -111,12 +111,15 @@ export type ShopifyTokenGrant = {
   refreshToken: string | null
   /** ISO expiry derived from `expires_in`; null for legacy non-expiring grants. */
   expiresAt: string | null
+  /** ISO expiry for the refresh token (≈90 days); null when not returned. */
+  refreshExpiresAt: string | null
 }
 
 function parseTokenGrant(data: {
   access_token?: string
   refresh_token?: string
   expires_in?: number
+  refresh_token_expires_in?: number
 }): ShopifyTokenGrant | null {
   if (!data.access_token) return null
   return {
@@ -125,6 +128,10 @@ function parseTokenGrant(data: {
     expiresAt:
       typeof data.expires_in === "number" && Number.isFinite(data.expires_in)
         ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+        : null,
+    refreshExpiresAt:
+      typeof data.refresh_token_expires_in === "number" && Number.isFinite(data.refresh_token_expires_in)
+        ? new Date(Date.now() + data.refresh_token_expires_in * 1000).toISOString()
         : null,
   }
 }
@@ -161,6 +168,56 @@ export async function exchangeCodeForTokenGrant(shop: string, code: string): Pro
   }
 }
 
+/**
+ * One-time irreversible migration: exchange a legacy non-expiring offline token
+ * for an expiring offline grant (access + refresh). Required for public apps —
+ * continued Admin API use of non-expiring tokens triggers the Dev Dashboard
+ * "deprecated offline tokens" warning.
+ *
+ * @see https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/offline-access-tokens
+ */
+export async function migrateNonExpiringOfflineToken(
+  shop: string,
+  nonExpiringAccessToken: string,
+): Promise<ShopifyTokenGrant | null> {
+  const apiKey = process.env.SHOPIFY_API_KEY
+  const apiSecret = getShopifyApiSecret()
+  if (!apiKey || !apiSecret || !isValidShopDomain(shop) || !nonExpiringAccessToken) return null
+
+  try {
+    const body = new URLSearchParams({
+      client_id: apiKey,
+      client_secret: apiSecret,
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      subject_token: nonExpiringAccessToken,
+      subject_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+      requested_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+      expiring: "1",
+    })
+    const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
+    })
+    if (!res.ok) {
+      console.error(`[shopify] legacy token migration failed for ${shop}: HTTP ${res.status}`)
+      return null
+    }
+    const grant = parseTokenGrant((await res.json()) as Parameters<typeof parseTokenGrant>[0])
+    if (!grant?.refreshToken || !grant.expiresAt) {
+      console.error(`[shopify] legacy token migration for ${shop} did not return an expiring grant`)
+      return null
+    }
+    return grant
+  } catch (err) {
+    console.error("[shopify] legacy token migration error:", err)
+    return null
+  }
+}
+
 /** Rotate an expiring offline token using its refresh token. */
 export async function refreshShopifyTokenGrant(
   shop: string,
@@ -171,16 +228,19 @@ export async function refreshShopifyTokenGrant(
   if (!apiKey || !apiSecret || !isValidShopDomain(shop) || !refreshToken) return null
 
   try {
+    const body = new URLSearchParams({
+      client_id: apiKey,
+      client_secret: apiSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    })
     const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        client_id: apiKey,
-        client_secret: apiSecret,
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        expiring: 1,
-      }),
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
     })
     if (!res.ok) {
       console.error(`[shopify] token refresh failed for ${shop}: HTTP ${res.status}`)
