@@ -152,6 +152,7 @@ const CatalogProductRow = memo(function CatalogProductRow({
   isSelected,
   quantity,
   editorHref,
+  passportHref,
   onToggle,
   onQuantityChange,
 }: {
@@ -160,6 +161,8 @@ const CatalogProductRow = memo(function CatalogProductRow({
   isSelected: boolean
   quantity: number
   editorHref: string
+  /** Public consumer passport URL (same destination as the printed QR). */
+  passportHref: string
   onToggle: (id: string) => void
   onQuantityChange: (id: string, raw: number) => void
 }) {
@@ -190,6 +193,12 @@ const CatalogProductRow = memo(function CatalogProductRow({
             </div>
           </div>
         </label>
+        <a
+          href={passportHref}
+          className={`inline-flex shrink-0 items-center rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] ${focusRingClass}`}
+        >
+          View passport
+        </a>
         <a
           href={editorHref}
           className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] ${focusRingClass}`}
@@ -1245,6 +1254,7 @@ export default function ShopifyAppHomePage() {
                       isSelected={selected.has(product.id)}
                       quantity={quantities[product.id] ?? 1}
                       editorHref={productEditorHref(product.id)}
+                      passportHref={product.url}
                       onToggle={toggle}
                       onQuantityChange={setProductQuantity}
                     />
