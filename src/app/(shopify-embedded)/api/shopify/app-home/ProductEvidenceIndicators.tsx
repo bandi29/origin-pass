@@ -7,7 +7,10 @@ import {
 
 const toneClass = {
   inherited: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  "inherited-muted": "border-[#e3e3e3] bg-[#f6f6f7] text-[#6d7175]",
+  // Dashed = "incomplete", readable without relying on the grey/green colour shift.
+  // Deliberately not amber: that tone is reserved for `conflict` (an unverified
+  // override), which is a worse state than simply awaiting evidence.
+  "inherited-muted": "border-dashed border-[#c9cccf] bg-[#f6f6f7] text-[#6d7175]",
   overridden: "border-sky-200 bg-sky-50 text-sky-900",
   conflict: "border-amber-200 bg-amber-50 text-amber-950",
 } as const

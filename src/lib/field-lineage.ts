@@ -98,7 +98,11 @@ export function fieldLineageChip(
   if (brandCertPresent) {
     return { label: "Inherited ✓", tone: "inherited" }
   }
-  return { label: "Inherited", tone: "inherited-muted" }
+  // This is the state that blocks audit-readiness, so it must name the gap. Labelling
+  // it plain "Inherited" made it a near-twin of the passing "Inherited ✓" chip —
+  // differing only by a ✓ and a grey/green shift at 10px — so a row could show no
+  // visible problem while the header reported it as awaiting evidence.
+  return { label: "Inherited · needs evidence", tone: "inherited-muted" }
 }
 
 /** Persist empty compliance_data when the value matches brand default. */

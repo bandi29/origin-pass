@@ -178,6 +178,8 @@ const CatalogProductRow = memo(function CatalogProductRow({
             type="checkbox"
             checked={isSelected}
             onChange={() => onToggle(product.id)}
+            // Selection scopes label printing only — View passport / Edit are per-row.
+            aria-label={`Select ${product.title} for label printing`}
             className="h-4 w-4 shrink-0 rounded border-[#c9cccf] text-[#202223] focus:ring-1 focus:ring-black"
           />
           <ProductListThumbnail imageUrl={product.imageUrl} title={product.title} />
@@ -216,8 +218,10 @@ const CatalogProductRow = memo(function CatalogProductRow({
           <ChevronRight className="h-3.5 w-3.5" aria-hidden />
         </a>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
+          {/* "Qty" alone reads as *inventory* in a Shopify admin — this is the number
+              of label copies to print, and must never be mistaken for stock. */}
           <label htmlFor={`qty-${product.id}`} className="text-[10px] font-medium uppercase tracking-wide text-[#8c9196]">
-            Qty
+            Labels
           </label>
           <input
             id={`qty-${product.id}`}
@@ -225,6 +229,7 @@ const CatalogProductRow = memo(function CatalogProductRow({
             min={1}
             max={999}
             value={quantity}
+            aria-label={`Label copies to print for ${product.title}`}
             onChange={(e) => onQuantityChange(product.id, Number(e.target.value))}
             className="w-16 rounded-md border border-[#c9cccf] bg-white px-2 py-1 text-center text-sm text-[#202223] outline-none transition focus:border-black focus:ring-1 focus:ring-black"
           />
@@ -1200,7 +1205,7 @@ export default function ShopifyAppHomePage() {
                   />
                   <div className="flex shrink-0 items-center gap-1.5">
                     <label htmlFor="qty-all" className="text-xs font-medium text-[#6d7175]">
-                      Qty for all
+                      Labels for all
                     </label>
                     <input
                       id="qty-all"
@@ -1256,7 +1261,9 @@ export default function ShopifyAppHomePage() {
                   {conflictFilter
                     ? `Showing ${visibleProducts.length.toLocaleString()} incomplete of ${uiCatalogTotal.toLocaleString()} product${uiCatalogTotal === 1 ? "" : "s"}`
                     : `Showing ${uiProducts.length.toLocaleString()} of ${uiCatalogTotal.toLocaleString()} product${uiCatalogTotal === 1 ? "" : "s"}`}
-                  {selected.size > 0 ? ` · ${selected.size.toLocaleString()} selected` : ""}
+                  {/* Always say what selection is *for* — the checkboxes sit beside
+                      per-row View passport / Edit buttons they don't control. */}
+                  {selected.size > 0 ? ` · ${selected.size.toLocaleString()} selected for printing` : ""}
                 </p>
                 {uiProducts.length < uiCatalogTotal ? (
                   <button

@@ -61,12 +61,38 @@ describe("resolveFieldLineageState", () => {
 describe("fieldLineageChip", () => {
   it("shows Inherited ✓ only when inheriting with brand evidence", () => {
     expect(fieldLineageChip("inherited", true).label).toBe("Inherited ✓")
-    expect(fieldLineageChip("inherited", false).label).toBe("Inherited")
+    expect(fieldLineageChip("inherited", false).label).toBe("Inherited · needs evidence")
   })
 
   it("shows Unverified claim only for conflict", () => {
     expect(fieldLineageChip("conflict", true).label).toBe("⚠ Unverified claim")
     expect(fieldLineageChip("inherited", true).label).not.toContain("Unverified")
+  })
+
+  /**
+   * The chip is the only per-row explanation of why a passport is not audit-ready.
+   * If the blocking state ever reads as a near-twin of the passing state again, a
+   * merchant sees an all-green row under a "0 audit-ready" header.
+   */
+  it("makes the audit-blocking chip visibly distinct from the passing one", () => {
+    const passing = fieldLineageChip("inherited", true)
+    const blocking = fieldLineageChip("inherited", false)
+
+    expect(blocking.tone).not.toBe(passing.tone)
+    // Must not differ from the passing chip by the ✓ glyph alone.
+    expect(blocking.label.replace("✓", "").trim()).not.toBe(passing.label.replace("✓", "").trim())
+    // Must state the gap in words, not rely on colour.
+    expect(blocking.label.toLowerCase()).toContain("needs evidence")
+  })
+
+  it("keeps every chip label distinct across all four states", () => {
+    const labels = [
+      fieldLineageChip("inherited", true).label,
+      fieldLineageChip("inherited", false).label,
+      fieldLineageChip("overridden", true).label,
+      fieldLineageChip("conflict", false).label,
+    ]
+    expect(new Set(labels).size).toBe(labels.length)
   })
 })
 
