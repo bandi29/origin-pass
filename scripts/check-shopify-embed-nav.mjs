@@ -27,13 +27,18 @@ function scan(file) {
   const rel = path.relative(process.cwd(), file)
   const lines = src.split("\n")
 
-  // Client UI that links passport preview/public URLs must escape the iframe.
+  // Client UI that opens passport preview/public URLs must escape the iframe.
   if (
     /\.tsx$/.test(file) &&
-    /href=\{passport(Href|PreviewHref)\}/.test(src) &&
+    /passport(Href|PreviewHref)/.test(src) &&
+    /View passport/.test(src) &&
     !src.includes("openOutsideShopifyEmbed")
   ) {
-    issues.push(`${rel}: passport link without openOutsideShopifyEmbed`)
+    issues.push(`${rel}: View passport without openOutsideShopifyEmbed`)
+  }
+  // Never use <a href={passport...}> in embed — App Bridge may navigate the iframe too.
+  if (/\.tsx$/.test(file) && /<a[^>]*href=\{passport(Href|PreviewHref)\}/.test(src)) {
+    issues.push(`${rel}: use a button + openOutsideShopifyEmbed for passport preview (not <a href>)`)
   }
 
   lines.forEach((line, i) => {

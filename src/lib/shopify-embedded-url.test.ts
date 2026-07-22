@@ -54,17 +54,49 @@ describe("openOutsideShopifyEmbed", () => {
     vi.restoreAllMocks()
   })
 
-  it("opens blank mode in a new tab", () => {
-    const open = vi.fn(() => ({ focus() {} }))
-    vi.stubGlobal("window", { open, shopify: undefined })
+  it("opens blank mode via a synthetic anchor (single navigation)", () => {
+    const open = vi.fn(() => null)
+    const click = vi.fn()
+    const remove = vi.fn()
+    const appendChild = vi.fn()
+    const createElement = vi.fn(() => ({
+      href: "",
+      target: "",
+      rel: "",
+      setAttribute: vi.fn(),
+      click,
+      remove,
+    }))
+    vi.stubGlobal("document", { createElement, body: { appendChild } })
+    vi.stubGlobal("window", { open, shopify: undefined, document: { createElement, body: { appendChild } } })
+
     expect(openOutsideShopifyEmbed("https://example.com/sp/a/b", "blank")).toBe(true)
-    expect(open).toHaveBeenCalledWith("https://example.com/sp/a/b", "_blank", "noopener,noreferrer")
+    expect(createElement).toHaveBeenCalledWith("a")
+    expect(click).toHaveBeenCalledTimes(1)
+    // Must NOT also navigate _top when the anchor path succeeds (double-open bug).
+    expect(open).not.toHaveBeenCalled()
   })
 
-  it("falls back to _top when the popup is blocked", () => {
+  it("falls back to window.open _blank then _top only if anchor path fails", () => {
     const open = vi.fn(() => null)
-    vi.stubGlobal("window", { open, shopify: undefined })
+    vi.stubGlobal("document", {
+      createElement: () => {
+        throw new Error("no document")
+      },
+      body: { appendChild: vi.fn() },
+    })
+    vi.stubGlobal("window", {
+      open,
+      shopify: undefined,
+      document: {
+        createElement: () => {
+          throw new Error("no document")
+        },
+        body: { appendChild: vi.fn() },
+      },
+    })
     expect(openOutsideShopifyEmbed("https://example.com/sp/a/b", "blank")).toBe(true)
+    expect(open).toHaveBeenCalledWith("https://example.com/sp/a/b", "_blank")
     expect(open).toHaveBeenLastCalledWith("https://example.com/sp/a/b", "_top")
   })
 

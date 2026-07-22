@@ -30,13 +30,38 @@ export function openOutsideShopifyEmbed(
     }
   }
 
+  // IMPORTANT: `window.open(url, "_blank", "noopener")` returns `null` in Chrome even when
+  // a tab opens. Treating that as "blocked" and falling back to `_top` opened the passport
+  // twice (new tab + replaced Admin iframe). Prefer a user-gesture <a> click instead.
   try {
-    const opened = window.open(target, "_blank", "noopener,noreferrer")
-    if (opened) return true
+    const anchor = document.createElement("a")
+    anchor.href = target
+    anchor.target = "_blank"
+    anchor.rel = "noopener noreferrer"
+    anchor.setAttribute("data-originpass-external", "1")
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    return true
   } catch {
     // fall through
   }
-  // Popup blocked: break out of the iframe rather than navigating _self (SAMEORIGIN).
+
+  try {
+    const opened = window.open(target, "_blank")
+    if (opened) {
+      try {
+        opened.opener = null
+      } catch {
+        /* ignore */
+      }
+      return true
+    }
+  } catch {
+    // fall through
+  }
+
+  // True popup block only — break out of the iframe rather than navigating _self (SAMEORIGIN).
   try {
     window.open(target, "_top")
     return true

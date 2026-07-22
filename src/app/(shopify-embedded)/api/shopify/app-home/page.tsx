@@ -195,12 +195,11 @@ const CatalogProductRow = memo(function CatalogProductRow({
             </div>
           </div>
         </label>
-        <a
-          href={passportPreviewHref}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
           onClick={(e) => {
-            // Public /sp pages send X-Frame-Options: SAMEORIGIN — never navigate the iframe.
+            // Button (not <a>): App Bridge must not also navigate the Admin iframe.
+            // Public /sp pages send X-Frame-Options: SAMEORIGIN — open a single new tab only.
             e.preventDefault()
             e.stopPropagation()
             openOutsideShopifyEmbed(passportPreviewHref, "blank")
@@ -208,7 +207,7 @@ const CatalogProductRow = memo(function CatalogProductRow({
           className={`inline-flex shrink-0 items-center rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] ${focusRingClass}`}
         >
           View passport
-        </a>
+        </button>
         <a
           href={editorHref}
           className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] ${focusRingClass}`}

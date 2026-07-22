@@ -508,35 +508,23 @@ function CertificateDocumentViewer({
             <p className="text-xs text-[#6d7175]">Supplier certificate preview</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={viewUrl}
-              download={fileName}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                // Cross-origin download often becomes in-iframe navigation — escape Admin iframe.
-                e.preventDefault()
-                openOutsideShopifyEmbed(viewUrl, "blank")
-              }}
+            <button
+              type="button"
+              onClick={() => openOutsideShopifyEmbed(viewUrl, "blank")}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7]"
             >
               <Download className="h-3.5 w-3.5" aria-hidden />
               Download
-            </a>
-            <a
-              href={viewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                e.preventDefault()
-                openOutsideShopifyEmbed(viewUrl, "blank")
-              }}
+            </button>
+            <button
+              type="button"
+              onClick={() => openOutsideShopifyEmbed(viewUrl, "blank")}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7]"
               title="Opens outside the Shopify admin iframe"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               Open full page
-            </a>
+            </button>
             <button
               type="button"
               onClick={onClose}
