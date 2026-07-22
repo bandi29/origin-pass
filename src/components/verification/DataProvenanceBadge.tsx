@@ -26,16 +26,19 @@ export function DataProvenanceBadge({
   title?: string
 }) {
   const model = dataProvenanceForPassport({ hasRecordLevelData: provenance === "record" })
+  const isPublic = variant === "public"
   return (
     <span
-      title={title ?? model.helper}
+      title={title ?? (isPublic ? model.publicHelper : model.helper)}
       className={clsx(
-        "inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold",
+        // Sentence case for shoppers; merchant surfaces keep the dense all-caps ops style.
+        isPublic ? "tracking-normal" : "uppercase tracking-wide",
         toneClass[provenance][variant],
         className,
       )}
     >
-      {model.label}
+      {isPublic ? model.publicLabel : model.label}
     </span>
   )
 }

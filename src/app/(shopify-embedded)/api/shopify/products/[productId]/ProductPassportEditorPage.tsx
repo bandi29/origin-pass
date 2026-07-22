@@ -114,7 +114,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const load = useCallback(async () => {
     if (!shop) return
     setLoading(true)
-    const data = await getProductPassportEditor(shop, productId)
+    const data = await getProductPassportEditor(shop, productId, await getSessionToken())
     setProduct(data)
     if (data) {
       setProductionLocation(data.productionLocation)

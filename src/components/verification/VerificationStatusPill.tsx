@@ -38,15 +38,19 @@ export function VerificationStatusPill({
   className?: string
 }) {
   const pill = verificationPillForField({ hasDocument, status, evidenceScope, scopeMismatch })
+  const isPublic = variant === "public"
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide",
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+        // Shoppers get sentence case — all-caps compliance pills read as shouting and
+        // are measurably slower to scan. Merchant surfaces keep the dense ops styling.
+        isPublic ? "tracking-normal" : "uppercase tracking-wide",
         toneClass[pill.tone][variant],
         className,
       )}
     >
-      {pill.label}
+      {isPublic ? pill.publicLabel : pill.label}
     </span>
   )
 }
@@ -76,7 +80,11 @@ export function VerificationFieldMeta({
         scopeMismatch={scopeMismatch}
         variant={variant}
       />
-      {pill.helper ? <p className="text-xs leading-relaxed text-neutral-500">{pill.helper}</p> : null}
+      {variant === "public" ? (
+        <p className="text-xs leading-relaxed text-neutral-500">{pill.publicHelper}</p>
+      ) : pill.helper ? (
+        <p className="text-xs leading-relaxed text-neutral-500">{pill.helper}</p>
+      ) : null}
     </div>
   )
 }

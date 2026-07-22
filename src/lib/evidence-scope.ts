@@ -8,6 +8,9 @@ export type DataProvenanceModel = {
   provenance: DataProvenance
   label: string
   helper: string
+  /** Shopper-facing wording. "Using fallback" is ops jargon a QR scanner can't parse. */
+  publicLabel: string
+  publicHelper: string
 }
 
 export type EvidenceScopeModel = {
@@ -16,6 +19,8 @@ export type EvidenceScopeModel = {
   helper: string
   /** Brand evidence must not be presented as product proof when data is record-level. */
   mismatchedWithData: boolean
+  /** Shopper-facing wording — see DataProvenanceModel.publicLabel. */
+  publicLabel: string
 }
 
 export function dataProvenanceForPassport(options: {
@@ -26,12 +31,16 @@ export function dataProvenanceForPassport(options: {
       provenance: "record",
       label: "Record-level data",
       helper: "This product has its own compliance values — not only brand defaults.",
+      publicLabel: "Product-specific data",
+      publicHelper: "These details were recorded for this individual product.",
     }
   }
   return {
     provenance: "fallback",
     label: "Using fallback",
     helper: "This product relies on brand-wide defaults until record-level data is added.",
+    publicLabel: "Brand-wide data",
+    publicHelper: "These details apply to the brand's whole range, not this item alone.",
   }
 }
 
@@ -46,6 +55,7 @@ export function evidenceScopeForField(options: {
       label: "Verified for this product",
       helper: "Supporting documentation is attached to this product.",
       mismatchedWithData: false,
+      publicLabel: "Specific to this item",
     }
   }
 
@@ -58,6 +68,7 @@ export function evidenceScopeForField(options: {
         ? "This document supports the brand default — it does not verify this product's own record."
         : "This document supports the brand-wide default shown when a product has no record of its own.",
       mismatchedWithData,
+      publicLabel: "Covers the brand's range",
     }
   }
 
@@ -66,6 +77,7 @@ export function evidenceScopeForField(options: {
     label: "No evidence on file",
     helper: "No supporting documentation is attached for this claim.",
     mismatchedWithData: false,
+    publicLabel: "No document",
   }
 }
 

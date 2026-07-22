@@ -7,7 +7,7 @@ import type { PublicFieldEvidence } from "@/lib/public-verification-evidence"
 import type { DataProvenance } from "@/lib/evidence-scope"
 import { DataProvenanceBadge } from "@/components/verification/DataProvenanceBadge"
 import { EvidenceScopeBadge } from "@/components/verification/EvidenceScopeBadge"
-import { VerificationStatusPill } from "@/components/verification/VerificationStatusPill"
+import { VerificationFieldMeta, VerificationStatusPill } from "@/components/verification/VerificationStatusPill"
 
 export type LuxuryPassportData = {
   productTitle: string | null
@@ -55,9 +55,56 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
     .sort((a, b) => b[1] - a[1])
 
   const evidenceByKey = Object.fromEntries((data.evidence ?? []).map((row) => [row.fieldKey, row]))
-  const productionEvidence = evidenceByKey[VERIFICATION_FIELD_KEYS.PRODUCTION_LOCATION]
   const careEvidence = evidenceByKey[VERIFICATION_FIELD_KEYS.CARE_INSTRUCTIONS]
   const passportProvenance = data.dataProvenance ?? "fallback"
+
+  // The hero badge is the most prominent claim on the page, so it must be derived from
+  // the evidence actually on file — never a blanket "compliant" assertion. Stating
+  // verified compliance over self-attested brand defaults is both untrue and the kind
+  // of unsubstantiated claim app review and EU consumer law penalise.
+  const evidenceRows = data.evidence ?? []
+  const hasProductEvidence = evidenceRows.some((row) => row.hasDocument && row.evidenceScope === "product")
+  const hasBrandEvidence = evidenceRows.some((row) => row.hasDocument && row.evidenceScope === "brand")
+  const heroClaim = hasProductEvidence
+    ? { label: "Verified for this product", tone: "border-emerald-300/40 bg-emerald-900/55" }
+    : hasBrandEvidence
+      ? { label: "Brand evidence on file", tone: "border-white/30 bg-black/45" }
+      : { label: "Self-declared by brand", tone: "border-white/25 bg-black/40" }
+
+  // Lead with one plain-language verdict. Without it every claim sits at the same
+  // visual weight and a shopper has to reverse-engineer the badges to answer the only
+  // question they actually have: "can I trust this?"
+  const documentedCount = evidenceRows.filter((row) => row.hasDocument).length
+  const independentlyChecked = evidenceRows.some(
+    (row) => row.hasDocument && row.verificationStatus === "third_party_verified",
+  )
+  const trust = independentlyChecked
+    ? {
+        title: "Independently checked",
+        body: "An independent organisation has checked the documentation behind these claims.",
+        tone: "border-violet-200 bg-violet-50/70",
+        dot: "bg-violet-600",
+      }
+    : hasProductEvidence
+      ? {
+          title: "Documented for this product",
+          body: "The brand has attached supporting documents specific to this item.",
+          tone: "border-emerald-200 bg-emerald-50/70",
+          dot: "bg-emerald-600",
+        }
+      : hasBrandEvidence
+        ? {
+            title: "Backed by brand documents",
+            body: "Supporting documents cover the brand's whole range rather than this item alone.",
+            tone: "border-amber-200 bg-amber-50/60",
+            dot: "bg-amber-500",
+          }
+        : {
+            title: "Self-declared by the brand",
+            body: "These details were provided by the brand without supporting documents.",
+            tone: "border-neutral-200 bg-neutral-50",
+            dot: "bg-neutral-400",
+          }
 
   return (
     <div className="mx-auto w-full max-w-xl px-4 py-10 font-sans text-neutral-900 sm:py-14">
@@ -65,11 +112,7 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
         {text(data.brandName, "OriginPass")} · Digital Passport
       </p>
 
-      <div className="mt-4 flex justify-center">
-        <DataProvenanceBadge provenance={passportProvenance} variant="public" />
-      </div>
-
-      {/* Hero: hi-res image + title + compliance badge */}
+      {/* Hero: hi-res image + title + evidence-derived claim */}
       <div className="mt-5 overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_24px_70px_-32px_rgba(0,0,0,0.45)]">
         <div className="relative aspect-[4/3] w-full bg-neutral-100">
           {data.imageUrl ? (
@@ -80,12 +123,16 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
               <span className="font-serif text-5xl font-semibold text-white/80">{initial}</span>
             </div>
           )}
-          <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-black/45 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+          <span
+            className={`absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md ${heroClaim.tone}`}
+          >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden>
               <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" stroke="currentColor" strokeWidth="1.6" />
-              <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              {hasProductEvidence ? (
+                <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              ) : null}
             </svg>
-            Verified EU DPP Compliant
+            {heroClaim.label}
           </span>
         </div>
 
@@ -93,41 +140,50 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <p className="text-sm text-neutral-500">{text(data.productionLocation, "Origin on file")}</p>
-            {productionEvidence ? (
-              <DataProvenanceBadge provenance={productionEvidence.dataProvenance} variant="public" />
-            ) : null}
-            {productionEvidence ? (
-              <VerificationStatusPill
-                variant="public"
-                hasDocument={productionEvidence.hasDocument}
-                status={productionEvidence.verificationStatus}
-                evidenceScope={productionEvidence.evidenceScope}
-                scopeMismatch={productionEvidence.scopeMismatch}
-              />
-            ) : null}
+            {/* No status pills here. The trust summary sits directly below and the
+                per-claim section details this field — repeating it three times in a
+                row was the badge soup that made the card hard to read. */}
           </div>
         </div>
       </div>
 
-      {/* Verification & evidence — consumer differentiator */}
-      {(data.evidence?.length ?? 0) > 0 ? (
-        <section className="mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      {/* Trust summary — one plain verdict, stated before any per-claim detail. */}
+      <section className={`mt-5 rounded-2xl border p-4 ${trust.tone}`}>
+        <div className="flex items-start gap-3">
+          <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${trust.dot}`} aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-neutral-900">{trust.title}</h2>
+              <DataProvenanceBadge provenance={passportProvenance} variant="public" />
+            </div>
+            <p className="mt-1 text-sm leading-relaxed text-neutral-700">{trust.body}</p>
+            {evidenceRows.length > 0 ? (
+              <p className="mt-2 text-xs font-medium text-neutral-600">
+                {documentedCount} of {evidenceRows.length}{" "}
+                {evidenceRows.length === 1 ? "claim has" : "claims have"} a supporting document.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      {/* Per-claim detail — the layer beneath the verdict above. */}
+      {evidenceRows.length > 0 ? (
+        <section className="mt-5 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white">
               <ShieldCheck className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                Verification &amp; evidence
-              </h2>
-              <p className="mt-1 text-sm text-neutral-600">
-                Each claim shows whether documentation is on file, how it was attested, and whether evidence is
-                brand-wide or specific to this product.
+              <h2 className="text-base font-semibold tracking-tight text-neutral-900">What backs each claim</h2>
+              <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                Each detail below shows the document supporting it, and whether that document covers this exact
+                item or the brand&apos;s wider range.
               </p>
             </div>
           </div>
           <ul className="mt-5 space-y-3">
-            {data.evidence!.map((row) => (
+            {evidenceRows.map((row) => (
               <li
                 key={row.fieldKey}
                 className={`rounded-xl border px-4 py-3 ${
@@ -141,32 +197,17 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-neutral-900">{row.label}</p>
-                      <DataProvenanceBadge provenance={row.dataProvenance} variant="public" />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <VerificationStatusPill
-                        variant="public"
-                        hasDocument={row.hasDocument}
-                        status={row.verificationStatus}
-                        evidenceScope={row.evidenceScope}
-                        scopeMismatch={row.scopeMismatch}
-                      />
-                      {row.hasDocument ? (
-                        <EvidenceScopeBadge
-                          scope={row.evidenceScope}
-                          dataProvenance={row.dataProvenance}
-                          variant="public"
-                        />
-                      ) : null}
-                    </div>
-                    {row.scopeMismatch ? (
-                      <p className="text-xs leading-relaxed text-amber-900/90">
-                        Brand-level evidence does not verify this product&apos;s own record for this claim.
-                      </p>
-                    ) : null}
+                  {/* One status + one explanation. Stacking provenance, status and scope
+                      pills put three competing badges on every row and buried the answer. */}
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-900">{row.label}</p>
+                    <VerificationFieldMeta
+                      variant="public"
+                      hasDocument={row.hasDocument}
+                      status={row.verificationStatus}
+                      evidenceScope={row.evidenceScope}
+                      scopeMismatch={row.scopeMismatch}
+                    />
                   </div>
                   {row.hasDocument && row.viewUrl ? (
                     <a
@@ -198,7 +239,7 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
       {/* Material composition — animated glassmorphism card */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-white/60 bg-white/70 p-5 shadow-sm backdrop-blur-md">
         <div className="flex items-center justify-between">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Material composition</h2>
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">Material composition</h2>
           {data.carbonFootprint != null ? (
             <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
               {data.carbonFootprint} kg CO₂e
@@ -230,7 +271,12 @@ export function LuxuryTemplateView({ data }: { data: LuxuryPassportData }) {
 
       {/* Regulatory disclosures — accordion */}
       <div className="mt-6 divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-        <Disclosure title="Traceability Matrix" body={text(data.story, "Provenance recorded against the brand's verified supply chain.")} defaultOpen />
+        {/* Default copy must not assert a "verified supply chain" the brand hasn't evidenced. */}
+        <Disclosure
+          title="Traceability"
+          body={text(data.story, "The brand hasn't added a supply-chain story for this product yet.")}
+          defaultOpen
+        />
         <Disclosure
           title="Recycling Guide"
           body={text(
@@ -297,20 +343,20 @@ function Disclosure({
       <div className={`grid transition-all duration-300 ease-out ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
         <div className="overflow-hidden">
           <div className="space-y-3 px-5 pb-5">
+            {/* The status pill in the header already states the evidence position, so the
+                body carries only the scope nuance — not a third restatement of it. */}
             {evidence ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <EvidenceScopeBadge
-                  scope={evidence.evidenceScope}
-                  dataProvenance={evidence.dataProvenance}
-                  variant="public"
-                />
-                <DataProvenanceBadge provenance={evidence.dataProvenance} variant="public" />
-              </div>
+              <EvidenceScopeBadge
+                scope={evidence.evidenceScope}
+                dataProvenance={evidence.dataProvenance}
+                variant="public"
+              />
             ) : null}
             <p className="text-sm leading-relaxed text-neutral-600">{body}</p>
             {evidence?.scopeMismatch ? (
               <p className="text-xs leading-relaxed text-amber-900/90">
-                Brand-level evidence does not verify this product&apos;s own record for this claim.
+                This document covers the brand&apos;s range, so it doesn&apos;t confirm this item&apos;s own
+                details.
               </p>
             ) : null}
             {evidence?.hasDocument && evidence.viewUrl ? (

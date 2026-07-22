@@ -502,12 +502,20 @@ export async function syncStoreProducts(shopParam: string, sessionToken?: string
   }
 }
 
-/** Load a single synced product for the per-product passport editor. */
+/**
+ * Load a single synced product for the per-product passport editor.
+ *
+ * Auth: verified session token in production (see resolveActionShop). Server
+ * Actions are publicly reachable POST endpoints, so trusting the caller-supplied
+ * `shop` here would let anyone read another store's compliance data.
+ */
 export async function getProductPassportEditor(
-  shop: string,
+  shopParam: string,
   productId: string,
+  sessionToken?: string,
 ): Promise<ProductPassportEditorData | null> {
-  if (!isValidShopDomain(shop) || !/^[0-9a-f-]{36}$/i.test(productId)) return null
+  const shop = resolveActionShop(shopParam, sessionToken)
+  if (!shop || !/^[0-9a-f-]{36}$/i.test(productId)) return null
 
   try {
     const supabase = createServerSupabaseClient()

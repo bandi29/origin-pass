@@ -54,10 +54,11 @@ describe("openOutsideShopifyEmbed", () => {
     vi.restoreAllMocks()
   })
 
-  it("opens blank mode via a synthetic anchor (single navigation)", () => {
+  // Chrome returns `null` from window.open even on success. Null must not be read as
+  // "blocked" — doing so triggered a second navigation and opened the passport twice.
+  it("opens blank mode via window.open, never a synthetic anchor (single navigation)", () => {
     const open = vi.fn(() => null)
     const click = vi.fn()
-    const remove = vi.fn()
     const appendChild = vi.fn()
     const createElement = vi.fn(() => ({
       href: "",
@@ -65,7 +66,33 @@ describe("openOutsideShopifyEmbed", () => {
       rel: "",
       setAttribute: vi.fn(),
       click,
-      remove,
+      remove: vi.fn(),
+    }))
+    vi.stubGlobal("document", { createElement, body: { appendChild } })
+    vi.stubGlobal("window", { open, shopify: undefined, document: { createElement, body: { appendChild } } })
+
+    expect(openOutsideShopifyEmbed("https://example.com/sp/a/b", "blank")).toBe(true)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith("https://example.com/sp/a/b", "_blank", "noopener,noreferrer")
+    // App Bridge intercepts anchor clicks inside the Admin iframe and navigates the
+    // host too — so the anchor path must not run when window.open succeeded.
+    expect(createElement).not.toHaveBeenCalled()
+    expect(click).not.toHaveBeenCalled()
+  })
+
+  it("falls back to an anchor only when window.open throws, and never navigates _top", () => {
+    const open = vi.fn(() => {
+      throw new Error("popup unavailable")
+    })
+    const click = vi.fn()
+    const appendChild = vi.fn()
+    const createElement = vi.fn(() => ({
+      href: "",
+      target: "",
+      rel: "",
+      setAttribute: vi.fn(),
+      click,
+      remove: vi.fn(),
     }))
     vi.stubGlobal("document", { createElement, body: { appendChild } })
     vi.stubGlobal("window", { open, shopify: undefined, document: { createElement, body: { appendChild } } })
@@ -73,31 +100,8 @@ describe("openOutsideShopifyEmbed", () => {
     expect(openOutsideShopifyEmbed("https://example.com/sp/a/b", "blank")).toBe(true)
     expect(createElement).toHaveBeenCalledWith("a")
     expect(click).toHaveBeenCalledTimes(1)
-    // Must NOT also navigate _top when the anchor path succeeds (double-open bug).
-    expect(open).not.toHaveBeenCalled()
-  })
-
-  it("falls back to window.open _blank then _top only if anchor path fails", () => {
-    const open = vi.fn(() => null)
-    vi.stubGlobal("document", {
-      createElement: () => {
-        throw new Error("no document")
-      },
-      body: { appendChild: vi.fn() },
-    })
-    vi.stubGlobal("window", {
-      open,
-      shopify: undefined,
-      document: {
-        createElement: () => {
-          throw new Error("no document")
-        },
-        body: { appendChild: vi.fn() },
-      },
-    })
-    expect(openOutsideShopifyEmbed("https://example.com/sp/a/b", "blank")).toBe(true)
-    expect(open).toHaveBeenCalledWith("https://example.com/sp/a/b", "_blank")
-    expect(open).toHaveBeenLastCalledWith("https://example.com/sp/a/b", "_top")
+    // Replacing the Admin shell loses the merchant's place in the app.
+    expect(open).not.toHaveBeenCalledWith("https://example.com/sp/a/b", "_top")
   })
 
   it("uses top-level navigation for OAuth/billing mode", () => {

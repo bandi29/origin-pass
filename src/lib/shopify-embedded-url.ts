@@ -30,9 +30,24 @@ export function openOutsideShopifyEmbed(
     }
   }
 
-  // IMPORTANT: `window.open(url, "_blank", "noopener")` returns `null` in Chrome even when
-  // a tab opens. Treating that as "blocked" and falling back to `_top` opened the passport
-  // twice (new tab + replaced Admin iframe). Prefer a user-gesture <a> click instead.
+  // Order matters. App Bridge intercepts *anchor clicks* inside the Admin iframe and
+  // routes them through the host — so a synthesized <a target="_blank"> opened the
+  // passport twice (new tab + navigated Admin). `window.open` is not intercepted that
+  // way, so it goes first.
+  //
+  // IMPORTANT: `window.open(url, "_blank", "noopener")` returns `null` in Chrome even
+  // when the tab opens successfully. Null is therefore NOT treated as a failure — only
+  // a thrown error is. Treating null as "blocked" is what caused the double-open.
+  try {
+    window.open(target, "_blank", "noopener,noreferrer")
+    return true
+  } catch {
+    // fall through — genuinely unavailable, not merely a null handle.
+  }
+
+  // Last resort only, when window.open itself threw. Still never navigate `_top` here:
+  // public /sp pages send X-Frame-Options: SAMEORIGIN, but replacing the Admin shell
+  // loses the merchant's place in the app, which is worse than a blocked popup.
   try {
     const anchor = document.createElement("a")
     anchor.href = target
@@ -42,28 +57,6 @@ export function openOutsideShopifyEmbed(
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
-    return true
-  } catch {
-    // fall through
-  }
-
-  try {
-    const opened = window.open(target, "_blank")
-    if (opened) {
-      try {
-        opened.opener = null
-      } catch {
-        /* ignore */
-      }
-      return true
-    }
-  } catch {
-    // fall through
-  }
-
-  // True popup block only — break out of the iframe rather than navigating _self (SAMEORIGIN).
-  try {
-    window.open(target, "_top")
     return true
   } catch {
     return false
