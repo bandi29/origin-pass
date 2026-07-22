@@ -143,6 +143,8 @@ const nextConfig: NextConfig = {
       {
         // Public QR / consumer passports — SWR at the edge (Vercel CDN / shared caches).
         // Browser: 60s · CDN: 5m · serve stale while revalidating for 10m.
+        // Keep SAMEORIGIN: these pages must open top-level / new tab (not inside the
+        // Shopify admin iframe). "View passport" uses target=_blank for that reason.
         source: "/sp/:path*",
         headers: [
           ...baseSecurityHeaders,

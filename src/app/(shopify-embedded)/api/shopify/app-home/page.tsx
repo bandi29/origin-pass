@@ -195,6 +195,16 @@ const CatalogProductRow = memo(function CatalogProductRow({
         </label>
         <a
           href={passportHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            // Public /sp pages send X-Frame-Options: SAMEORIGIN. Navigating inside the
+            // Shopify admin iframe shows "refused to connect" — open outside the iframe.
+            e.preventDefault()
+            e.stopPropagation()
+            const opened = window.open(passportHref, "_blank", "noopener,noreferrer")
+            if (!opened) window.open(passportHref, "_top")
+          }}
           className={`inline-flex shrink-0 items-center rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] ${focusRingClass}`}
         >
           View passport
