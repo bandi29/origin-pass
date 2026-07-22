@@ -10,6 +10,8 @@ import { isAdminPassportPreview } from "@/lib/public-passport-consumer"
 type Props = {
   /** Server-detected preview flag from `?preview=true`. Client also reads the query string. */
   adminPreview?: boolean
+  /** Deep link back to the embedded OriginPass app (Shopify Admin). */
+  adminReturnHref?: string | null
   /** Brand https URL or `/` for marketing home — never a dashboard path. */
   publicHomeHref: string
   className?: string
@@ -17,6 +19,7 @@ type Props = {
 
 function PassportConsumerHomeNavContent({
   adminPreview = false,
+  adminReturnHref = null,
   publicHomeHref,
   className,
 }: Props) {
@@ -24,6 +27,14 @@ function PassportConsumerHomeNavContent({
   const isPreview = adminPreview || isAdminPassportPreview(searchParams)
 
   if (isPreview) {
+    if (adminReturnHref) {
+      return (
+        <a href={adminReturnHref} className={className}>
+          <ArrowLeft className="mr-1 h-3 w-3" aria-hidden />
+          Back to OriginPass
+        </a>
+      )
+    }
     return (
       <button type="button" onClick={() => window.close()} className={className}>
         <X className="mr-1 h-3 w-3" aria-hidden />

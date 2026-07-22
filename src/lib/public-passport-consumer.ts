@@ -77,16 +77,24 @@ export function isAdminPassportPreview(
 }
 
 /** Append `preview=true` for dashboard "open passport" links that should show Close Preview chrome. */
-export function appendPassportPreviewQuery(url: string): string {
+export function appendPassportPreviewQuery(
+  url: string,
+  opts?: { shop?: string | null; host?: string | null },
+): string {
   try {
     const parsed = new URL(url, "https://originpass.local")
     parsed.searchParams.set("preview", "true")
+    if (opts?.shop) parsed.searchParams.set("shop", opts.shop)
+    if (opts?.host) parsed.searchParams.set("host", opts.host)
     if (url.startsWith("http://") || url.startsWith("https://")) {
       return parsed.toString()
     }
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     const join = url.includes("?") ? "&" : "?"
-    return `${url}${join}preview=true`
+    const extra = new URLSearchParams({ preview: "true" })
+    if (opts?.shop) extra.set("shop", opts.shop)
+    if (opts?.host) extra.set("host", opts.host)
+    return `${url}${join}${extra.toString()}`
   }
 }

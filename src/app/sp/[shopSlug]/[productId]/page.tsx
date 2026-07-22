@@ -1,4 +1,8 @@
 import { LuxuryTemplateView } from "@/components/passport/LuxuryTemplateView"
+import {
+  MerchantPassportPreviewShell,
+  resolveMerchantPreviewChrome,
+} from "@/components/passport/merchant-passport-preview"
 import { loadPublicShopPassportData } from "@/lib/public-shop-passport-data"
 
 /**
@@ -11,24 +15,29 @@ export const revalidate = 60
 
 type PageProps = {
   params: Promise<{ shopSlug: string; productId: string }>
-  searchParams: Promise<{ variant?: string }>
+  searchParams: Promise<{ variant?: string; preview?: string; admin?: string; shop?: string; host?: string }>
 }
 
 /** Short QR entry — `/sp/{shop}/{productId}` (no query string, scannable at small sizes). */
 export default async function ShortShopPassportPage({ params, searchParams }: PageProps) {
   const { shopSlug, productId } = await params
-  const { variant: variantId } = await searchParams
+  const sp = await searchParams
+  const { variant: variantId, ...previewParams } = sp
 
-  // Soft fallback payload only — never throw — so CDN SWR cannot lock onto an error shell.
   const data = await loadPublicShopPassportData({
     shopId: shopSlug,
     productId,
     variantId,
   })
 
+  const { showPreview, adminReturnHref } = resolveMerchantPreviewChrome({
+    shopSlug,
+    searchParams: previewParams,
+  })
+
   return (
-    <main className="min-h-screen bg-neutral-50">
+    <MerchantPassportPreviewShell showPreview={showPreview} adminReturnHref={adminReturnHref}>
       <LuxuryTemplateView data={data} />
-    </main>
+    </MerchantPassportPreviewShell>
   )
 }
