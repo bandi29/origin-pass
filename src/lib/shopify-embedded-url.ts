@@ -1,3 +1,62 @@
+/**
+ * Escape the Shopify admin iframe for URLs that must not load as the iframe document.
+ *
+ * - `"blank"` — public consumer pages (`/sp`, `/shop`), certificates, etc. that send
+ *   `X-Frame-Options: SAMEORIGIN` (Chrome: "refused to connect" if left in-iframe).
+ * - `"top"` — Shopify OAuth / Billing approval URLs that must replace the Admin shell.
+ */
+export type ShopifyExternalOpenMode = "blank" | "top"
+
+export function openOutsideShopifyEmbed(
+  url: string,
+  mode: ShopifyExternalOpenMode = "blank",
+): boolean {
+  if (typeof window === "undefined") return false
+  const target = String(url || "").trim()
+  if (!target) return false
+
+  if (mode === "top") {
+    try {
+      const opened = window.open(target, "_top")
+      if (opened !== null || window.shopify) return true
+    } catch {
+      // fall through
+    }
+    try {
+      ;(window.top ?? window).location.href = target
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  try {
+    const opened = window.open(target, "_blank", "noopener,noreferrer")
+    if (opened) return true
+  } catch {
+    // fall through
+  }
+  // Popup blocked: break out of the iframe rather than navigating _self (SAMEORIGIN).
+  try {
+    window.open(target, "_top")
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** True when a path must never load as the Shopify admin iframe document. */
+export function isShopifyIframeBlockedPath(pathnameOrUrl: string): boolean {
+  try {
+    const path = pathnameOrUrl.startsWith("http")
+      ? new URL(pathnameOrUrl).pathname
+      : pathnameOrUrl.split("?")[0] || ""
+    return /^\/(sp|shop|p|s|scan)(\/|$)/i.test(path)
+  } catch {
+    return false
+  }
+}
+
 /** Build in-app URLs that work inside the Shopify admin iframe. */
 export function shopifyEmbeddedQueryString(params: {
   embedded?: string | null

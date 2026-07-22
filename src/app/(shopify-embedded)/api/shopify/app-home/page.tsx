@@ -22,6 +22,7 @@ import {
   productIsAuditReady,
 } from "@/lib/field-lineage"
 import {
+  openOutsideShopifyEmbed,
   shopifyEmbeddedProductEditorHref,
 } from "@/lib/shopify-embedded-url"
 import {
@@ -198,12 +199,10 @@ const CatalogProductRow = memo(function CatalogProductRow({
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => {
-            // Public /sp pages send X-Frame-Options: SAMEORIGIN. Navigating inside the
-            // Shopify admin iframe shows "refused to connect" — open outside the iframe.
+            // Public /sp pages send X-Frame-Options: SAMEORIGIN — never navigate the iframe.
             e.preventDefault()
             e.stopPropagation()
-            const opened = window.open(passportHref, "_blank", "noopener,noreferrer")
-            if (!opened) window.open(passportHref, "_top")
+            openOutsideShopifyEmbed(passportHref, "blank")
           }}
           className={`inline-flex shrink-0 items-center rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7] ${focusRingClass}`}
         >
@@ -385,17 +384,7 @@ export default function ShopifyAppHomePage() {
     if (!connectionLoaded || connected || !shop || !connectUrl) return
     if (oauthRedirectStartedRef.current) return
     oauthRedirectStartedRef.current = true
-    try {
-      const opened = window.open(connectUrl, "_top")
-      if (opened !== null || window.shopify) return
-    } catch {
-      // fall through
-    }
-    try {
-      ;(window.top ?? window).location.href = connectUrl
-    } catch {
-      // If navigation is blocked, the non-interactive connecting UI remains visible.
-    }
+    openOutsideShopifyEmbed(connectUrl, "top")
   }, [connectionLoaded, connected, shop, connectUrl])
 
   useEffect(() => {
@@ -564,18 +553,7 @@ export default function ShopifyAppHomePage() {
   }, [shop, host])
 
   const openConfirmationUrl = useCallback((confirmationUrl: string): boolean => {
-    try {
-      const opened = window.open(confirmationUrl, "_top")
-      if (opened !== null || window.shopify) return true
-    } catch {
-      // fall through
-    }
-    try {
-      ;(window.top ?? window).location.href = confirmationUrl
-      return true
-    } catch {
-      return false
-    }
+    return openOutsideShopifyEmbed(confirmationUrl, "top")
   }, [])
 
   const refreshSubscriptionTier = useCallback(async () => {

@@ -13,7 +13,7 @@ import {
 import { ConflictResolutionPanel } from "@/components/verification/ConflictResolutionPanel"
 import { FieldLineageBadge } from "@/components/verification/FieldLineageBadge"
 import { resolveFieldLineage } from "@/lib/field-lineage"
-import { shopifyEmbeddedHomeHref } from "@/lib/shopify-embedded-url"
+import { openOutsideShopifyEmbed, shopifyEmbeddedHomeHref } from "@/lib/shopify-embedded-url"
 import { useShopifyContextualSave } from "@/app/(shopify-embedded)/ShopifyContextualSaveBar"
 import { ShopifyAppTitleBar } from "@/app/(shopify-embedded)/ShopifyAppTitleBar"
 
@@ -141,17 +141,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
         if (!active) return
         setConnected(ok)
         if (!ok && connectUrl) {
-          try {
-            const opened = window.open(connectUrl, "_top")
-            if (opened !== null || window.shopify) return
-          } catch {
-            // fall through
-          }
-          try {
-            ;(window.top ?? window).location.href = connectUrl
-          } catch {
-            // non-interactive connecting UI remains
-          }
+          openOutsideShopifyEmbed(connectUrl, "top")
         }
       })
       .finally(() => {

@@ -12,6 +12,7 @@ import {
   SUPPLIER_CERTIFICATE_SIZE_ERROR,
   SUPPLIER_CERTIFICATE_TYPE_ERROR,
 } from "@/lib/supplier-certificate-upload-policy"
+import { openOutsideShopifyEmbed } from "@/lib/shopify-embedded-url"
 
 type UploadPhase = "loading" | "idle" | "uploading" | "success" | "error"
 type UploadErrorKind = "wrong_type" | "oversized" | "network" | "server" | null
@@ -510,6 +511,13 @@ function CertificateDocumentViewer({
             <a
               href={viewUrl}
               download={fileName}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                // Cross-origin download often becomes in-iframe navigation — escape Admin iframe.
+                e.preventDefault()
+                openOutsideShopifyEmbed(viewUrl, "blank")
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7]"
             >
               <Download className="h-3.5 w-3.5" aria-hidden />
@@ -517,10 +525,14 @@ function CertificateDocumentViewer({
             </a>
             <a
               href={viewUrl}
-              target="_top"
+              target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => {
+                e.preventDefault()
+                openOutsideShopifyEmbed(viewUrl, "blank")
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-2.5 py-1.5 text-xs font-medium text-[#202223] transition hover:bg-[#f6f6f7]"
-              title="Opens in the top browser window (bypasses iframe pop-up block)"
+              title="Opens outside the Shopify admin iframe"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               Open full page

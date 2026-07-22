@@ -48,6 +48,8 @@ export default function proxy(request: NextRequest) {
   const isEmbedEntry = isShopifyEmbeddedRequest(request)
 
   // Public consumer passports — apply SWR Cache-Control (Next RSC otherwise emits no-store).
+  // Intentionally do NOT strip X-Frame-Options: these pages must open top-level / new tab
+  // (see openOutsideShopifyEmbed). Loading them inside Admin causes "refused to connect".
   if (PUBLIC_PASSPORT_PATH.test(pathname)) {
     return withPublicPassportCacheHeaders(NextResponse.next())
   }
@@ -84,9 +86,13 @@ export default function proxy(request: NextRequest) {
   }
 
   if (isShopifyPath) {
-    return NextResponse.next({
-      request: { headers: withShopifyEmbeddedRequest(request) },
-    })
+    // Always stamp Shopify frame-ancestors on embed API routes so a future
+    // next.config regression cannot reintroduce X-Frame-Options: SAMEORIGIN.
+    return withShopifyEmbedHeaders(
+      NextResponse.next({
+        request: { headers: withShopifyEmbeddedRequest(request) },
+      }),
+    )
   }
 
   return intlMiddleware(request)
