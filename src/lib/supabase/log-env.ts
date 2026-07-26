@@ -2,7 +2,7 @@ let logged = false
 
 /**
  * One-shot, non-sensitive host log outside Vercel Production.
- * Never logs keys — only hostname + env label.
+ * Never logs keys - only hostname + env label.
  *
  * Note: Vercel Preview builds use NODE_ENV=production, so we key off
  * VERCEL_ENV when present (development | preview | production).
