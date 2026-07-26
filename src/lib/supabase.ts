@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { logSupabaseHostInDev } from "@/lib/supabase/log-env"
 
 /**
  * Server-side Supabase client (service-role).
@@ -19,6 +20,8 @@ export function createServerSupabaseClient(): SupabaseClient {
       "Supabase env vars missing: set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
     )
   }
+
+  logSupabaseHostInDev()
 
   return createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
