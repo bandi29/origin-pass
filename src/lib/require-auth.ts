@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { isRedirectError } from "next/dist/client/components/redirect-error"
 import { createClient } from "@/lib/supabase/server"
 import { userHasOrganization } from "@/lib/auth-org"
 
@@ -35,6 +36,8 @@ export async function requireAuth(options: RequireAuthOptions = {}) {
 
     return { user }
   } catch (err) {
+    // `redirect()` throws; must not be swallowed by this catch.
+    if (isRedirectError(err)) throw err
     console.error("[requireAuth] unexpected:", err instanceof Error ? err.message : err)
     redirect("/login")
   }

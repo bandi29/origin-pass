@@ -171,9 +171,23 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // GS1 Digital Link entry — same public cache posture as `/sp`.
+        source: "/01/:path*",
+        headers: [
+          ...baseSecurityHeaders,
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=60, s-maxage=300, stale-while-revalidate=600",
+          },
+          { key: "CDN-Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=600" },
+          { key: "Vercel-CDN-Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=600" },
+        ],
+      },
+      {
         // Require at least one path segment so `/` is handled above, not here.
         // Exclude public passport paths (handled above with SWR Cache-Control).
-        source: "/((?!api/shopify|en|fr|it|products|sp|shop).+)",
+        source: "/((?!api/shopify|en|fr|it|products|sp|shop|01).+)",
         headers: [...baseSecurityHeaders, { key: "X-Frame-Options", value: "SAMEORIGIN" }],
       },
     ]

@@ -43,7 +43,11 @@ function expandLabelsByQuantity(products: PrintableProduct[]): ExpandedLabel[] {
   return out
 }
 
-/** Avery 5160 cell — QR encodes short `/sp/{shop}/{productId}` (public passport with verification). */
+function linkTypeTag(linkType: PrintableProduct["linkType"] | undefined): string {
+  return linkType === "gs1" ? "[GS1 Digital Link]" : "[Standard Link]"
+}
+
+/** Avery 5160 cell — QR encodes GS1 `/01/{gtin}` when set, else `/sp/{shop}/{productId}`. */
 function AveryLabelCell({ product }: { product: ExpandedLabel }) {
   return (
     <div className="flex items-center gap-2 overflow-hidden px-2 print:break-inside-avoid print:overflow-visible print:px-1">
@@ -63,6 +67,9 @@ function AveryLabelCell({ product }: { product: ExpandedLabel }) {
         ) : null}
         <p className="mt-0.5 text-[7px] uppercase tracking-wide text-neutral-400 print:text-black">
           Verify · OriginPass
+        </p>
+        <p className="truncate text-[6px] leading-tight text-neutral-400 print:text-black">
+          {linkTypeTag(product.linkType)}
         </p>
       </div>
     </div>
@@ -91,6 +98,9 @@ function ThermalLabelCell({ product }: { product: ExpandedLabel }) {
         {product.title}
       </p>
       <p className="text-[6px] uppercase tracking-wide text-neutral-400 print:text-black">OriginPass</p>
+      <p className="max-w-full truncate px-1 text-center text-[5px] leading-tight text-neutral-400 print:text-black">
+        {linkTypeTag(product.linkType)}
+      </p>
     </div>
   )
 }

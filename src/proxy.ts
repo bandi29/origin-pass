@@ -40,14 +40,16 @@ function withPublicPassportCacheHeaders(response: NextResponse): NextResponse {
 }
 
 const LOCALE_PREFIX = /^\/(en|fr|it)(\/.*)?$/
-const PUBLIC_PASSPORT_PATH = /^\/(sp|shop)(\/|$)/
+/** Public consumer passport + GS1 Digital Link entry — never locale-prefix these. */
+const PUBLIC_PASSPORT_PATH = /^\/(sp|shop|01)(\/|$)/
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isShopifyPath = pathname.startsWith("/api/shopify")
   const isEmbedEntry = isShopifyEmbeddedRequest(request)
 
-  // Public consumer passports — apply SWR Cache-Control (Next RSC otherwise emits no-store).
+  // Public consumer passports / GS1 Digital Links — apply SWR Cache-Control
+  // (Next RSC otherwise emits no-store) and skip next-intl locale redirects.
   // Intentionally do NOT strip X-Frame-Options: these pages must open top-level / new tab
   // (see openOutsideShopifyEmbed). Loading them inside Admin causes "refused to connect".
   if (PUBLIC_PASSPORT_PATH.test(pathname)) {
@@ -106,7 +108,9 @@ export const config = {
     "/api/shopify/:path*",
     "/sp/:path*",
     "/shop/:path*",
+    "/01/:path*",
     "/(fr|en|it)/:path*",
-    "/((?!_next|_vercel|api|p|s|sp|scan|auth|passports|scans|verifications|analytics|shop|.*\\..*).*)",
+    // Exclude GS1 Digital Link `/01/*` from locale middleware (same as `/sp`, `/p`).
+    "/((?!_next|_vercel|api|p|s|sp|01|scan|auth|passports|scans|verifications|analytics|shop|.*\\..*).*)",
   ],
 }

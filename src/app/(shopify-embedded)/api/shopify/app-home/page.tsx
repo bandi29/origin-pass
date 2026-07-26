@@ -25,6 +25,12 @@ import {
   openOutsideShopifyEmbed,
   shopifyEmbeddedProductEditorHref,
 } from "@/lib/shopify-embedded-url"
+import {
+  clearOAuthRedirects,
+  oauthRedirectCount,
+  OAUTH_LOOP_MAX_REDIRECTS,
+  registerOAuthRedirect,
+} from "@/lib/shopify-oauth-loop-guard"
 import { appendPassportPreviewQuery } from "@/lib/public-passport-consumer"
 import {
   getShopifySyncProgress,
@@ -40,11 +46,16 @@ import {
 /** App Bridge session token; undefined when not in an embedded context. */
 async function getSessionToken(): Promise<string | undefined> {
   if (typeof window === "undefined" || !window.shopify) return undefined
-  try {
-    return await window.shopify.idToken()
-  } catch {
-    return undefined
+  // One retry: App Bridge's first idToken() can reject transiently right after init.
+  // A single quiet retry avoids a spurious "not connected" → OAuth redirect.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await window.shopify.idToken()
+    } catch {
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 300))
+    }
   }
+  return undefined
 }
 
 const PRODUCTION_MAX = 120
@@ -309,6 +320,9 @@ export default function ShopifyAppHomePage() {
   const productCacheRef = useRef(new Map<string, PrintableProduct>())
   const oauthRedirectStartedRef = useRef(false)
   const cancelPollRef = useRef<number | null>(null)
+  // Set when the auto-OAuth redirect has looped without ever verifying the session —
+  // we stop bouncing and show a recoverable error instead of an infinite redirect.
+  const [authBlocked, setAuthBlocked] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(catalogSearch.trim()), 300)
@@ -388,9 +402,27 @@ export default function ShopifyAppHomePage() {
   useEffect(() => {
     if (!connectionLoaded || connected || !shop || !connectUrl) return
     if (oauthRedirectStartedRef.current) return
+
+    // Loop guard: if we've already bounced through OAuth for this shop and STILL
+    // can't verify the session (App Bridge blocked / non-embedded / init failure),
+    // stop — an infinite redirect is worse than a clear, recoverable error.
+    const storage = typeof window !== "undefined" ? window.sessionStorage : null
+    const now = Date.now()
+    if (oauthRedirectCount(storage, shop, now) >= OAUTH_LOOP_MAX_REDIRECTS) {
+      setAuthBlocked(true)
+      return
+    }
+    registerOAuthRedirect(storage, shop, now)
+
     oauthRedirectStartedRef.current = true
     openOutsideShopifyEmbed(connectUrl, "top")
   }, [connectionLoaded, connected, shop, connectUrl])
+
+  // Once the store genuinely verifies, forget the redirect history for this shop.
+  useEffect(() => {
+    if (!connected) return
+    clearOAuthRedirects(typeof window !== "undefined" ? window.sessionStorage : null)
+  }, [connected])
 
   useEffect(() => {
     return () => {
@@ -811,6 +843,11 @@ export default function ShopifyAppHomePage() {
 
   const awaitingOAuth = Boolean(shop) && (!connectionLoaded || !connected)
 
+  const handleAuthReload = useCallback(() => {
+    clearOAuthRedirects(typeof window !== "undefined" ? window.sessionStorage : null)
+    if (typeof window !== "undefined") window.location.reload()
+  }, [])
+
   return (
     <>
       <ShopifyAppTitleBar />
@@ -826,23 +863,50 @@ export default function ShopifyAppHomePage() {
       <div className={`min-h-screen bg-[#f6f6f7] px-5 py-8 font-sans text-[#202223] print:hidden ${nativeSaveBarActive ? "pb-8" : "pb-28"}`}>
         <div className="mx-auto w-full max-w-2xl space-y-5">
         {awaitingOAuth ? (
-          <section
-            aria-labelledby="oauth-connecting-heading"
-            className="rounded-xl border border-slate-200 bg-white p-8 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
-            role="status"
-            aria-live="polite"
-          >
-            <div className="flex flex-col items-center gap-3 text-center">
-              <Loader2 className="h-6 w-6 animate-spin text-[#303030]" aria-hidden />
-              <h1 id="oauth-connecting-heading" className="text-lg font-semibold text-slate-900">
-                Connecting to Shopify…
-              </h1>
-              <p className="max-w-sm text-sm leading-relaxed text-slate-600">
-                Opening authorization so OriginPass can access your catalog. This page is not interactive until
-                the store is linked.
-              </p>
-            </div>
-          </section>
+          authBlocked ? (
+            <section
+              aria-labelledby="oauth-blocked-heading"
+              className="rounded-xl border border-amber-200 bg-white p-8 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
+              role="alert"
+            >
+              <div className="flex flex-col items-center gap-3 text-center">
+                <h1 id="oauth-blocked-heading" className="text-lg font-semibold text-slate-900">
+                  Couldn&apos;t verify your Shopify session
+                </h1>
+                <p className="max-w-sm text-sm leading-relaxed text-slate-600">
+                  OriginPass tried to reconnect but couldn&apos;t confirm your session. This usually means a
+                  browser extension or privacy setting is blocking Shopify. Try reloading, or reopen OriginPass
+                  from your Shopify admin.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAuthReload}
+                  className={`mt-1 inline-flex items-center gap-2 rounded-lg bg-[#303030] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1a1a1a] ${focusRingClass}`}
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden />
+                  Reload
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section
+              aria-labelledby="oauth-connecting-heading"
+              className="rounded-xl border border-slate-200 bg-white p-8 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex flex-col items-center gap-3 text-center">
+                <Loader2 className="h-6 w-6 animate-spin text-[#303030]" aria-hidden />
+                <h1 id="oauth-connecting-heading" className="text-lg font-semibold text-slate-900">
+                  Connecting to Shopify…
+                </h1>
+                <p className="max-w-sm text-sm leading-relaxed text-slate-600">
+                  Opening authorization so OriginPass can access your catalog. This page is not interactive until
+                  the store is linked.
+                </p>
+              </div>
+            </section>
+          )
         ) : (
           <>
         <header className="space-y-3">

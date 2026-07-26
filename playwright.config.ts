@@ -16,9 +16,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    // Prefer a healthy existing server; when port 3000 serves only 5xx, Playwright
+    // will not reuse it (waits for 2xx) — start Next directly (skip ensure-dev-port).
+    command: "npx next dev -p 3000",
     url: process.env.E2E_BASE_URL || "http://localhost:3000",
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
 })

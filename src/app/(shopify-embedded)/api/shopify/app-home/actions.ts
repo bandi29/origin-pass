@@ -13,6 +13,7 @@ import { enqueueCatalogSync, hasCatalogSyncQueue } from "@/lib/shopify-catalog-s
 import { fetchShopifyCatalogCount } from "@/lib/shopify-catalog-sync"
 import { HEAVY_VOLUME_THRESHOLD, processCatalogSyncJob } from "@/lib/shopify-catalog-sync-job"
 import { buildShopifyPublicPassportUrl } from "@/lib/shopify-public-passport-url"
+import { normalizeGtinDigits, resolvePassportLinkUrl, validateGTIN } from "@/lib/gs1"
 import { fieldClaimProvenance, parseProductComplianceData, readProductComplianceField } from "@/lib/product-compliance-fields"
 import { VERIFICATION_FIELD_KEYS } from "@/lib/verification-field-keys"
 import {
@@ -55,6 +56,8 @@ export type PrintableProduct = {
   sku: string | null
   /** Absolute public passport URL encoded into the printed QR. */
   url: string
+  /** Whether the QR encodes a GS1 Digital Link or the standard `/sp` fallback. */
+  linkType: "gs1" | "standard"
   /** Shopify featured image synced into `products.image_url`. */
   imageUrl: string | null
   /** Per-field inheritance lineage for merchant audit visibility. */
@@ -63,11 +66,28 @@ export type PrintableProduct = {
   quantity?: number
 }
 
+/** Per-variant GTIN row for the product passport editor (DPP-03). */
+export type VariantGtinEditorRow = {
+  passportId: string
+  externalVariantId: string | null
+  label: string
+  gtin: string
+  serialNumber: string | null
+}
+
 export type ProductPassportEditorData = {
   id: string
   title: string
   sku: string | null
   imageUrl: string | null
+  /** Optional catalog-level GS1 GTIN / EAN / UPC (fallback when no variant GTIN). */
+  gtin: string
+  /** Optional GS1 GLN. */
+  gln: string
+  /** Optional default batch/lot (AI 10). */
+  defaultLotNumber: string
+  /** Synced Shopify variants (passports) with editable GTINs. */
+  variants: VariantGtinEditorRow[]
   productionLocation: string
   careInstructions: string
   brandProductionLocation: string
@@ -87,6 +107,10 @@ export type ProductPassportSaveState = {
   message: string
   productionLocation: string
   careInstructions: string
+  gtin: string
+  gln: string
+  defaultLotNumber: string
+  variants: VariantGtinEditorRow[]
 }
 
 type ProductRow = {
@@ -99,6 +123,13 @@ type ProductRow = {
   story: string | null
   compliance_data: Record<string, unknown> | null
   traceability_data: Record<string, unknown> | null
+  gtin?: string | null
+  gln?: string | null
+  default_lot_number?: string | null
+}
+
+function publicPassportBaseDomain(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL ?? "").replace(/^https?:\/\//i, "").replace(/\/$/, "")
 }
 
 /**
@@ -201,7 +232,10 @@ export async function listStoreProducts(
 
     let query = supabase
       .from("products")
-      .select("id, name, sku, external_product_id, image_url, compliance_data", { count: "exact" })
+      .select(
+        "id, name, sku, external_product_id, image_url, compliance_data, gtin, default_lot_number",
+        { count: "exact" },
+      )
       .eq("organization_id", store.id)
       .eq("is_archived", false)
       .not("external_product_id", "is", null)
@@ -240,11 +274,21 @@ export async function listStoreProducts(
         certPresence.brand,
       )
 
+      const fallbackUrl = buildShopifyPublicPassportUrl(shop, p.external_product_id ?? "")
+      const domain = publicPassportBaseDomain()
+      const link = resolvePassportLinkUrl({
+        domain: domain || fallbackUrl.replace(/^https?:\/\//i, "").split("/")[0] || "localhost",
+        gtin: p.gtin,
+        lot: p.default_lot_number,
+        fallbackUrl,
+      })
+
       return {
         id: p.id,
         title: p.name?.trim() || "Untitled product",
         sku: p.sku,
-        url: buildShopifyPublicPassportUrl(shop, p.external_product_id ?? ""),
+        url: link.url,
+        linkType: link.linkType,
         imageUrl: p.image_url?.trim() || null,
         lineage: {
           productionLocation,
@@ -526,15 +570,23 @@ export async function getProductPassportEditor(
       .maybeSingle()
     if (!store?.id) return null
 
-    const [{ data: product }, certPresence] = await Promise.all([
+    const [{ data: product }, certPresence, { data: passportRows }] = await Promise.all([
       supabase
         .from("products")
-        .select("id, name, sku, image_url, compliance_data, external_product_id")
+        .select(
+          "id, name, sku, image_url, compliance_data, external_product_id, gtin, gln, default_lot_number",
+        )
         .eq("organization_id", store.id)
         .eq("id", productId)
         .not("external_product_id", "is", null)
         .maybeSingle(),
       loadCertificatePresence(store.id),
+      supabase
+        .from("passports")
+        .select("id, external_variant_id, gtin, serial_number")
+        .eq("organization_id", store.id)
+        .eq("product_id", productId)
+        .order("created_at", { ascending: true }),
     ])
 
     if (!product) return null
@@ -565,11 +617,32 @@ export async function getProductPassportEditor(
     const brandCertProduction = certPresence.brand.has(VERIFICATION_FIELD_KEYS.PRODUCTION_LOCATION)
     const brandCertCare = certPresence.brand.has(VERIFICATION_FIELD_KEYS.CARE_INSTRUCTIONS)
 
+    const variants: VariantGtinEditorRow[] = (
+      (passportRows ?? []) as Array<{
+        id: string
+        external_variant_id: string | null
+        gtin: string | null
+        serial_number: string | null
+      }>
+    ).map((p, index) => ({
+      passportId: p.id,
+      externalVariantId: p.external_variant_id?.trim() || null,
+      label: p.external_variant_id?.trim()
+        ? `Variant ${p.external_variant_id.trim()}`
+        : `Variant ${index + 1}`,
+      gtin: p.gtin?.trim() ?? "",
+      serialNumber: p.serial_number?.trim() || null,
+    }))
+
     return {
       id: row.id,
       title: row.name?.trim() || "Untitled product",
       sku: row.sku,
       imageUrl: row.image_url?.trim() || null,
+      gtin: row.gtin?.trim() ?? "",
+      gln: row.gln?.trim() ?? "",
+      defaultLotNumber: row.default_lot_number?.trim() ?? "",
+      variants,
       productionLocation: productionValue,
       careInstructions: careValue,
       brandProductionLocation: brandProduction,
@@ -598,30 +671,69 @@ export async function getProductPassportEditor(
   }
 }
 
-/** Persist per-product production/care values (stored in compliance_data). */
+/** Persist per-product production/care values (stored in compliance_data) + optional GS1 ids. */
 export async function updateProductPassportFields(input: {
   shop: string
   productId: string
   sessionToken?: string
   productionLocation: string
   careInstructions: string
+  gtin?: string
+  gln?: string
+  defaultLotNumber?: string
+  /** Per-variant GTIN updates (passport id -> digits). */
+  variantGtins?: Array<{ passportId: string; gtin: string }>
 }): Promise<ProductPassportSaveState> {
   const rawProduction = input.productionLocation.trim()
   const rawCare = input.careInstructions.trim()
+  const rawGtin = normalizeGtinDigits(input.gtin ?? "")
+  const rawGln = normalizeGtinDigits(input.gln ?? "").slice(0, 13)
+  const rawLot = (input.defaultLotNumber ?? "").trim().slice(0, 80)
+  const rawVariants = (input.variantGtins ?? []).map((v) => ({
+    passportId: v.passportId,
+    gtin: normalizeGtinDigits(v.gtin),
+  }))
 
   const verified = verifyShopifySessionToken(input.sessionToken)
   const shop = (verified?.shop ?? (process.env.NODE_ENV === "production" ? "" : input.shop)).trim()
 
+  const fail = (message: string, variants: VariantGtinEditorRow[] = []): ProductPassportSaveState => ({
+    ok: false,
+    message,
+    productionLocation: rawProduction,
+    careInstructions: rawCare,
+    gtin: rawGtin,
+    gln: rawGln,
+    defaultLotNumber: rawLot,
+    variants,
+  })
+
   if (input.sessionToken && !verified) {
-    return {
-      ok: false,
-      message: "Session expired — reload the app and try again.",
-      productionLocation: rawProduction,
-      careInstructions: rawCare,
-    }
+    return fail("Session expired — reload the app and try again.")
   }
   if (!isValidShopDomain(shop) || !/^[0-9a-f-]{36}$/i.test(input.productId)) {
-    return { ok: false, message: "Invalid product.", productionLocation: rawProduction, careInstructions: rawCare }
+    return fail("Invalid product.")
+  }
+  if (rawGtin && !validateGTIN(rawGtin)) {
+    return fail("GTIN check digit is invalid. Leave blank or enter a valid GTIN/EAN/UPC.")
+  }
+  if (rawGln && rawGln.length > 13) {
+    return fail("GLN must be at most 13 digits.")
+  }
+  for (const v of rawVariants) {
+    if (v.gtin && !validateGTIN(v.gtin)) {
+      return fail("One or more variant GTINs have an invalid Modulo-10 check digit.")
+    }
+    if (v.gtin && !/^[0-9a-f-]{36}$/i.test(v.passportId)) {
+      return fail("Invalid variant passport id.")
+    }
+  }
+  const variantGtinValues = rawVariants.map((v) => v.gtin).filter(Boolean)
+  if (new Set(variantGtinValues).size !== variantGtinValues.length) {
+    return fail("Duplicate GTINs across variants are not allowed.")
+  }
+  if (rawGtin && variantGtinValues.includes(rawGtin)) {
+    return fail("Product GTIN must not duplicate a variant GTIN.")
   }
 
   const supabase = createServerSupabaseClient()
@@ -631,13 +743,16 @@ export async function updateProductPassportFields(input: {
     .eq("shop_domain", shop)
     .maybeSingle()
   if (!store?.id) {
-    return { ok: false, message: "Store not found.", productionLocation: rawProduction, careInstructions: rawCare }
+    return fail("Store not found.")
   }
 
   const brandProduction = store.global_production_location?.trim() ?? ""
   const brandCare = store.global_care_instructions?.trim() ?? ""
   const productionLocation = normalizedProductFieldStorageValue(rawProduction, brandProduction)
   const careInstructions = normalizedProductFieldStorageValue(rawCare, brandCare)
+  const gtin = rawGtin || null
+  const gln = rawGln || null
+  const defaultLotNumber = rawLot || null
 
   const { data: existing } = await supabase
     .from("products")
@@ -647,7 +762,7 @@ export async function updateProductPassportFields(input: {
     .maybeSingle()
 
   if (!existing) {
-    return { ok: false, message: "Product not found.", productionLocation, careInstructions }
+    return fail("Product not found.")
   }
 
   const compliance = parseProductComplianceData(existing.compliance_data)
@@ -684,19 +799,55 @@ export async function updateProductPassportFields(input: {
 
   const { error } = await supabase
     .from("products")
-    .update({ compliance_data: compliance })
+    .update({
+      compliance_data: compliance,
+      gtin,
+      gln,
+      default_lot_number: defaultLotNumber,
+    })
     .eq("organization_id", store.id)
     .eq("id", input.productId)
 
   if (error) {
     console.error("[shopify/product-editor] update failed:", error.message)
-    return { ok: false, message: "Could not save product fields.", productionLocation, careInstructions }
+    const duplicate = error.message?.toLowerCase().includes("uq_products_organization_gtin")
+    return fail(
+      duplicate
+        ? "This GTIN is already used on another product in your store."
+        : "Could not save product fields.",
+    )
   }
+
+  for (const v of rawVariants) {
+    const { error: variantError } = await supabase
+      .from("passports")
+      .update({ gtin: v.gtin || null })
+      .eq("organization_id", store.id)
+      .eq("product_id", input.productId)
+      .eq("id", v.passportId)
+
+    if (variantError) {
+      console.error("[shopify/product-editor] variant gtin update failed:", variantError.message)
+      const duplicate = variantError.message?.toLowerCase().includes("uq_passports_organization_gtin")
+      return fail(
+        duplicate
+          ? "This variant GTIN is already used on another variant in your store."
+          : "Could not save variant GTINs.",
+      )
+    }
+  }
+
+  const refreshed = await getProductPassportEditor(shop, input.productId, input.sessionToken)
+  const variants = refreshed?.variants ?? []
 
   return {
     ok: true,
     message: "Product passport fields saved.",
     productionLocation,
     careInstructions,
+    gtin: rawGtin,
+    gln: rawGln,
+    defaultLotNumber: rawLot,
+    variants,
   }
 }

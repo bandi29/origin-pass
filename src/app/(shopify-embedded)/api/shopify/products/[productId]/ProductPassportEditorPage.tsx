@@ -10,6 +10,7 @@ import {
   updateProductPassportFields,
   type ProductPassportEditorData,
 } from "../../app-home/actions"
+import { gtinFormatLabel, normalizeGtinDigits, validateGTIN } from "@/lib/gs1"
 import { ConflictResolutionPanel } from "@/components/verification/ConflictResolutionPanel"
 import { FieldLineageBadge } from "@/components/verification/FieldLineageBadge"
 import { resolveFieldLineage } from "@/lib/field-lineage"
@@ -95,8 +96,19 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const [product, setProduct] = useState<ProductPassportEditorData | null>(null)
   const [productionLocation, setProductionLocation] = useState("")
   const [careInstructions, setCareInstructions] = useState("")
+  const [gtin, setGtin] = useState("")
+  const [gln, setGln] = useState("")
+  const [defaultLotNumber, setDefaultLotNumber] = useState("")
+  /** passportId -> GTIN draft for DPP-03 variant mapping */
+  const [variantGtins, setVariantGtins] = useState<Record<string, string>>({})
   const [savedProduction, setSavedProduction] = useState("")
   const [savedCare, setSavedCare] = useState("")
+  const [savedGtin, setSavedGtin] = useState("")
+  const [savedGln, setSavedGln] = useState("")
+  const [savedLot, setSavedLot] = useState("")
+  const [savedVariantGtins, setSavedVariantGtins] = useState<Record<string, string>>({})
+  const [gtinTouched, setGtinTouched] = useState(false)
+  const [variantGtinTouched, setVariantGtinTouched] = useState<Record<string, boolean>>({})
   const [productionEditing, setProductionEditing] = useState(false)
   const [careEditing, setCareEditing] = useState(false)
   const [hasProductCertProduction, setHasProductCertProduction] = useState(false)
@@ -117,10 +129,22 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
     const data = await getProductPassportEditor(shop, productId, await getSessionToken())
     setProduct(data)
     if (data) {
+      const variantMap: Record<string, string> = {}
+      for (const v of data.variants ?? []) variantMap[v.passportId] = v.gtin
       setProductionLocation(data.productionLocation)
       setCareInstructions(data.careInstructions)
+      setGtin(data.gtin)
+      setGln(data.gln)
+      setDefaultLotNumber(data.defaultLotNumber)
+      setVariantGtins(variantMap)
       setSavedProduction(data.productionLocation)
       setSavedCare(data.careInstructions)
+      setSavedGtin(data.gtin)
+      setSavedGln(data.gln)
+      setSavedLot(data.defaultLotNumber)
+      setSavedVariantGtins(variantMap)
+      setGtinTouched(false)
+      setVariantGtinTouched({})
       setProductionEditing(Boolean(data.productionLocation.trim()))
       setCareEditing(Boolean(data.careInstructions.trim()))
       setHasProductCertProduction(data.hasProductCertProduction)
@@ -157,17 +181,53 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
     void load()
   }, [connected, load])
 
+  const gtinDigits = normalizeGtinDigits(gtin)
+  const gtinValid = !gtinDigits || validateGTIN(gtinDigits)
+  const gtinLabel = gtinDigits && validateGTIN(gtinDigits) ? gtinFormatLabel(gtinDigits) : null
+
+  const variantGtinFingerprint = Object.keys({ ...savedVariantGtins, ...variantGtins })
+    .sort()
+    .map((id) => `${id}:${normalizeGtinDigits(variantGtins[id] ?? "")}`)
+    .join("|")
+  const savedVariantFingerprint = Object.keys(savedVariantGtins)
+    .sort()
+    .map((id) => `${id}:${normalizeGtinDigits(savedVariantGtins[id] ?? "")}`)
+    .join("|")
+
   const hasUnsavedChanges =
     (productionEditing ? productionLocation : "") !== savedProduction ||
-    (careEditing ? careInstructions : "") !== savedCare
+    (careEditing ? careInstructions : "") !== savedCare ||
+    gtinDigits !== normalizeGtinDigits(savedGtin) ||
+    normalizeGtinDigits(gln) !== normalizeGtinDigits(savedGln) ||
+    defaultLotNumber.trim() !== savedLot.trim() ||
+    variantGtinFingerprint !== savedVariantFingerprint
 
   const formFingerprint = [
     productionEditing ? productionLocation : "",
     careEditing ? careInstructions : "",
+    gtinDigits,
+    normalizeGtinDigits(gln),
+    defaultLotNumber.trim(),
+    variantGtinFingerprint,
   ].join("\u001f")
 
   const handleSave = useCallback(async () => {
     if (!shop || saving) return
+    if (gtinDigits && !validateGTIN(gtinDigits)) {
+      setGtinTouched(true)
+      setSaveMessage({ ok: false, text: "GTIN check digit is invalid." })
+      window.shopify?.toast.show("GTIN check digit is invalid.", { isError: true })
+      return
+    }
+    for (const [passportId, value] of Object.entries(variantGtins)) {
+      const digits = normalizeGtinDigits(value)
+      if (digits && !validateGTIN(digits)) {
+        setVariantGtinTouched((prev) => ({ ...prev, [passportId]: true }))
+        setSaveMessage({ ok: false, text: "One or more variant GTINs are invalid." })
+        window.shopify?.toast.show("Variant GTIN check digit is invalid.", { isError: true })
+        return
+      }
+    }
     setSaving(true)
     setSaveMessage(null)
     try {
@@ -178,13 +238,32 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
         sessionToken,
         productionLocation: productionEditing ? productionLocation : "",
         careInstructions: careEditing ? careInstructions : "",
+        gtin: gtinDigits,
+        gln: normalizeGtinDigits(gln),
+        defaultLotNumber: defaultLotNumber.trim(),
+        variantGtins: Object.entries(variantGtins).map(([passportId, value]) => ({
+          passportId,
+          gtin: normalizeGtinDigits(value),
+        })),
       })
       setSaveMessage({ ok: result.ok, text: result.message })
       if (result.ok) {
+        const variantMap: Record<string, string> = {}
+        for (const v of result.variants ?? []) variantMap[v.passportId] = v.gtin
         setSavedProduction(result.productionLocation)
         setSavedCare(result.careInstructions)
         setProductionLocation(result.productionLocation)
         setCareInstructions(result.careInstructions)
+        setGtin(result.gtin)
+        setGln(result.gln)
+        setDefaultLotNumber(result.defaultLotNumber)
+        setVariantGtins(variantMap)
+        setSavedGtin(result.gtin)
+        setSavedGln(result.gln)
+        setSavedLot(result.defaultLotNumber)
+        setSavedVariantGtins(variantMap)
+        setGtinTouched(false)
+        setVariantGtinTouched({})
         setProductionEditing(Boolean(result.productionLocation.trim()))
         setCareEditing(Boolean(result.careInstructions.trim()))
         window.shopify?.toast.show("Product passport saved")
@@ -203,15 +282,25 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
     productionLocation,
     careEditing,
     careInstructions,
+    gtinDigits,
+    gln,
+    defaultLotNumber,
+    variantGtins,
     load,
   ])
 
   const handleDiscard = useCallback(() => {
     setProductionLocation(savedProduction)
     setCareInstructions(savedCare)
+    setGtin(savedGtin)
+    setGln(savedGln)
+    setDefaultLotNumber(savedLot)
+    setVariantGtins(savedVariantGtins)
+    setGtinTouched(false)
+    setVariantGtinTouched({})
     setProductionEditing(Boolean(savedProduction.trim()))
     setCareEditing(Boolean(savedCare.trim()))
-  }, [savedProduction, savedCare])
+  }, [savedProduction, savedCare, savedGtin, savedGln, savedLot, savedVariantGtins])
 
   const { nativeSaveBarActive, saveBarFormProps, hiddenInputRef } = useShopifyContextualSave({
     id: PRODUCT_SAVE_BAR_ID,
@@ -454,6 +543,162 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
                 />
               </>
             )}
+          </div>
+
+          <div className="space-y-4 border-t border-[#e3e3e3] pt-5">
+            <div>
+              <h2 className="text-sm font-semibold text-[#202223]">GS1 Digital Link Identifiers</h2>
+              <p className="mt-1 text-xs text-[#6d7175]">
+                Optional. When a valid GTIN is set, printed QR codes use a GS1 Digital Link
+                (<code className="text-[11px]">/01/&#123;gtin&#125;</code>). Leave blank to keep the standard
+                OriginPass link.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="productGtin" className="text-sm font-medium text-[#202223]">
+                  Product GTIN / EAN / UPC (fallback)
+                </label>
+                {gtinLabel ? (
+                  <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                    ✓ GS1 Valid {gtinLabel}
+                  </span>
+                ) : null}
+              </div>
+              <input
+                id="productGtin"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={18}
+                value={gtin}
+                onChange={(e) => setGtin(e.target.value)}
+                onBlur={() => {
+                  setGtinTouched(true)
+                  const digits = normalizeGtinDigits(gtin)
+                  if (digits) setGtin(digits)
+                }}
+                placeholder="e.g. 5901234123457"
+                className={fieldClass}
+              />
+              {gtinTouched && gtinDigits && !gtinValid ? (
+                <p className="text-xs text-[#8e1b16]">Invalid Modulo-10 check digit for this GTIN.</p>
+              ) : (
+                <p className="text-xs text-[#6d7175]">
+                  Used when a variant has no GTIN. Prefer per-variant GTINs below for size/color SKUs.
+                </p>
+              )}
+            </div>
+
+            {(product.variants?.length ?? 0) > 0 ? (
+              <div className="space-y-3 rounded-lg border border-[#e3e3e3] bg-[#fafbfb] px-3.5 py-3">
+                <div>
+                  <p className="text-sm font-medium text-[#202223]">Variant GTINs</p>
+                  <p className="mt-0.5 text-xs text-[#6d7175]">
+                    Each Shopify variant can have its own GTIN. Scanning that Digital Link opens the
+                    matching variant passport.
+                  </p>
+                </div>
+                <ul className="space-y-3">
+                  {product.variants.map((variant) => {
+                    const value = variantGtins[variant.passportId] ?? ""
+                    const digits = normalizeGtinDigits(value)
+                    const valid = !digits || validateGTIN(digits)
+                    const label = digits && validateGTIN(digits) ? gtinFormatLabel(digits) : null
+                    const touched = Boolean(variantGtinTouched[variant.passportId])
+                    return (
+                      <li key={variant.passportId} className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label
+                            htmlFor={`variantGtin-${variant.passportId}`}
+                            className="text-xs font-semibold text-[#202223]"
+                          >
+                            {variant.label}
+                            {variant.serialNumber ? (
+                              <span className="ml-1 font-normal text-[#6d7175]">
+                                · {variant.serialNumber}
+                              </span>
+                            ) : null}
+                          </label>
+                          {label ? (
+                            <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                              ✓ GS1 Valid {label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <input
+                          id={`variantGtin-${variant.passportId}`}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={18}
+                          value={value}
+                          onChange={(e) =>
+                            setVariantGtins((prev) => ({
+                              ...prev,
+                              [variant.passportId]: e.target.value,
+                            }))
+                          }
+                          onBlur={() => {
+                            setVariantGtinTouched((prev) => ({ ...prev, [variant.passportId]: true }))
+                            const next = normalizeGtinDigits(variantGtins[variant.passportId] ?? "")
+                            if (next) {
+                              setVariantGtins((prev) => ({ ...prev, [variant.passportId]: next }))
+                            }
+                          }}
+                          placeholder="Variant GTIN (optional)"
+                          className={fieldClass}
+                        />
+                        {touched && digits && !valid ? (
+                          <p className="text-xs text-[#8e1b16]">Invalid Modulo-10 check digit.</p>
+                        ) : null}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-[#6d7175]">
+                Sync your Shopify catalog to edit per-variant GTINs (Size S / M / L, etc.).
+              </p>
+            )}
+
+            <div className="space-y-2">
+              <label htmlFor="productLot" className="text-sm font-medium text-[#202223]">
+                Batch / Lot Number (AI 10)
+              </label>
+              <input
+                id="productLot"
+                type="text"
+                maxLength={80}
+                value={defaultLotNumber}
+                onChange={(e) => setDefaultLotNumber(e.target.value.slice(0, 80))}
+                placeholder="Optional default lot for Digital Link QR"
+                className={fieldClass}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="productGln" className="text-sm font-medium text-[#202223]">
+                GLN (optional)
+              </label>
+              <input
+                id="productGln"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={13}
+                value={gln}
+                onChange={(e) => setGln(e.target.value)}
+                onBlur={() => {
+                  const digits = normalizeGtinDigits(gln).slice(0, 13)
+                  setGln(digits)
+                }}
+                placeholder="13-digit Global Location Number"
+                className={fieldClass}
+              />
+            </div>
           </div>
 
           {saveMessage && !saveMessage.ok ? (

@@ -18,12 +18,20 @@ model Product {
   description String?
   category    String?
   origin      String?
+  /// Optional GS1 GTIN (8/12/13/14). Indexed in Supabase; NULL for existing rows.
+  gtin        String?  @db.VarChar(14)
+  /// Optional GS1 GLN (max 13).
+  gln         String?  @db.VarChar(13)
+  /// Optional default batch/lot (AI 10) for Digital Link QR encoding.
+  defaultLotNumber String? @map("default_lot_number")
   createdAt   DateTime @default(now())
 
   passport Passport?
   // Supabase `products` also includes: sku, brand, json_ld, materials, import_log_id,
   // origin_country, batch_number, manufacture_date, certifications, import_qr_ref,
   // compliance_category_key, base_data, compliance_data, traceability_data, ai_metadata (see migrations).
+
+  @@index([gtin])
 }
 
 model Passport {
@@ -32,10 +40,14 @@ model Passport {
   story      String?
   materials  Json?
   timeline   Json?
+  /// Optional variant-level GS1 GTIN (Supabase: passports.gtin). Indexed per organization.
+  gtin       String?  @db.VarChar(14)
   createdAt  DateTime @default(now())
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   qrCode  QRCode?
+
+  @@index([gtin])
 }
 
 model QRCode {
