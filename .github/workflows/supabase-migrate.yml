@@ -51,4 +51,5 @@ jobs:
             exit 1
           fi
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
-          supabase db push --yes
+          # Older setup-cli builds reject --yes; non-interactive confirm via stdin.
+          printf 'y\n' | supabase db push --linked
