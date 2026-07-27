@@ -1,4 +1,5 @@
 import { spacing } from "@/design-system/tokens"
+import NextLink from "next/link"
 import { Link } from "@/i18n/navigation"
 import { SiteHeader, SiteFooter } from "@/components/layout/Shell"
 import { NarrowContainer } from "@/components/layout/Containers"
@@ -27,7 +28,13 @@ export default function CompliancePage() {
                     </p>
                 </section>
 
-                    <section className="grid gap-3 md:grid-cols-3">
+                    <section className="grid gap-3 md:grid-cols-2">
+                        <NextLink href="/blog/eu-espr-compliance-shopify-apparel-brands" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 hover:bg-slate-50">
+                            EU ESPR compliance guide for Shopify apparel
+                        </NextLink>
+                        <NextLink href="/blog/gs1-digital-link-qr-code-clothing-hangtags" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 hover:bg-slate-50">
+                            GS1 Digital Link QR hangtag workflow
+                        </NextLink>
                         <Link href="/compliance/eu-digital-product-passport" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 hover:bg-slate-50">
                             EU Digital Product Passport
                         </Link>
@@ -37,6 +44,9 @@ export default function CompliancePage() {
                         <Link href="/compliance/supply-chain-traceability" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 hover:bg-slate-50">
                             Supply Chain Traceability
                         </Link>
+                        <NextLink href="/blog" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 hover:bg-slate-50">
+                            All DPP guides
+                        </NextLink>
                     </section>
 
                     <section className="grid gap-6 md:grid-cols-3">

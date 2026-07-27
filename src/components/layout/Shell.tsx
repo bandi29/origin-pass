@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 import Image from "next/image"
+import NextLink from "next/link"
 import { Link } from "@/i18n/navigation"
 import { WideContainer } from "@/components/layout/Containers"
 import { Container } from "@/components/ui/Container"
@@ -49,6 +50,9 @@ export function SiteFooter({ variant = "narrow" }: { variant?: LayoutVariant }) 
                         <Link href="/pricing" className="hover:text-slate-900">
                             Pricing
                         </Link>
+                        <NextLink href="/blog" className="hover:text-slate-900">
+                            Guides
+                        </NextLink>
                         <Link href="/documentation" className="hover:text-slate-900">
                             Docs
                         </Link>

@@ -61,6 +61,7 @@
     "country-state-city": "^3.2.1",
     "csv-parse": "^6.2.1",
     "framer-motion": "^12.29.2",
+    "gray-matter": "^4.0.3",
     "ioredis": "^5.10.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.563.0",
@@ -76,6 +77,9 @@
     "react-dom": "19.2.3",
     "react-to-print": "^3.2.0",
     "recharts": "^3.8.0",
+    "remark": "^15.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-html": "^16.0.1",
     "tailwind-merge": "^3.4.0",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
