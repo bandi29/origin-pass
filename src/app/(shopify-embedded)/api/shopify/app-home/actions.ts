@@ -54,8 +54,14 @@ export type PrintableProduct = {
   id: string
   title: string
   sku: string | null
-  /** Absolute public passport URL encoded into the printed QR. */
+  /** Absolute public passport URL encoded into the printed QR (GS1 when GTIN is set). */
   url: string
+  /**
+   * Merchant "View passport" URL — always the standard `/sp` consumer page.
+   * Never use the GS1 `/01/...` link here: `buildGS1DigitalLink` forces `https://`,
+   * which breaks local `shopify:dev` (`https://localhost:3000`) and can open a blank tab.
+   */
+  previewUrl: string
   /** Whether the QR encodes a GS1 Digital Link or the standard `/sp` fallback. */
   linkType: "gs1" | "standard"
   /** Shopify featured image synced into `products.image_url`. */
@@ -291,6 +297,7 @@ export async function listStoreProducts(
         title: p.name?.trim() || "Untitled product",
         sku: p.sku,
         url: link.url,
+        previewUrl: fallbackUrl,
         linkType: link.linkType,
         imageUrl: p.image_url?.trim() || null,
         lineage: {
@@ -449,8 +456,12 @@ export async function updateStoreConfig(input: {
 
 /** Whether the store has a persisted Shopify offline access token. */
 export async function isStoreConnected(shopParam: string, sessionToken?: string): Promise<boolean> {
-  const shop = resolveActionShop(shopParam, sessionToken)
-  if (!shop) return false
+  // Presence check only — do NOT fail closed on an unverifiable App Bridge token.
+  // resolveActionShop() returns null when a bad token is present, which forced an
+  // OAuth loop ("Connecting…") even when organizations already had a grant.
+  const verified = verifyShopifySessionToken(sessionToken)
+  const shop = (verified?.shop ?? String(shopParam || "")).trim()
+  if (!isValidShopDomain(shop)) return false
   try {
     const supabase = createServerSupabaseClient()
     const { data } = await supabase

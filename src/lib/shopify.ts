@@ -263,9 +263,44 @@ export function resolveShopifyAppOrigin(fallbackOrigin: string): string {
   return `https://${raw.replace(/\/$/, "")}`
 }
 
-/** OAuth redirect URI — must exactly match a URL whitelisted for the app. */
+function normalizeOrigin(raw: string): string {
+  const trimmed = raw.replace(/\/$/, "")
+  if (!trimmed) return ""
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+  return `https://${trimmed}`
+}
+
+function isCloudflareQuickTunnel(origin: string): boolean {
+  try {
+    return /\.trycloudflare\.com$/i.test(new URL(normalizeOrigin(origin)).hostname)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * OAuth redirect_uri — must exactly match a Partner Dashboard allowlisted URL.
+ *
+ * `shopify app dev` sets HOST to a rotating `*.trycloudflare.com` tunnel. If
+ * Partners has not yet (or failed to) whitelist that tunnel callback, Shopify
+ * returns: "Oauth error invalid_request: The redirect_uri is not whitelisted".
+ *
+ * Default: stable production callback from shopify.app.toml / SHOPIFY_APP_URL.
+ * Opt in to tunnel callbacks with SHOPIFY_ALLOW_TUNNEL_OAUTH=1 after the CLI
+ * Update URLs step has registered the current tunnel.
+ */
 export function buildShopifyOAuthRedirectUri(fallbackOrigin: string): string {
-  const origin = resolveShopifyAppOrigin(fallbackOrigin)
+  const stable = normalizeOrigin(
+    process.env.SHOPIFY_OAUTH_REDIRECT_ORIGIN ||
+      process.env.SHOPIFY_APP_URL ||
+      "https://origin-pass.vercel.app",
+  )
+  const hostOrigin = normalizeOrigin(process.env.HOST || "")
+  const allowTunnel = process.env.SHOPIFY_ALLOW_TUNNEL_OAUTH === "1"
+  const origin =
+    allowTunnel && hostOrigin && isCloudflareQuickTunnel(hostOrigin)
+      ? hostOrigin
+      : stable || normalizeOrigin(fallbackOrigin) || "https://origin-pass.vercel.app"
   return new URL("/api/shopify/auth/callback", origin).toString()
 }
 

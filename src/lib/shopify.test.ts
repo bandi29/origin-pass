@@ -1,6 +1,11 @@
 import crypto from "node:crypto"
 import { describe, expect, it, beforeEach, afterEach } from "vitest"
-import { getShopifyApiSecret, verifyShopifyHmac, verifyShopifyWebhook } from "@/lib/shopify"
+import {
+  buildShopifyOAuthRedirectUri,
+  getShopifyApiSecret,
+  verifyShopifyHmac,
+  verifyShopifyWebhook,
+} from "@/lib/shopify"
 import { readShopifyShopId } from "@/lib/shopify-webhook-handler"
 
 const TEST_SECRET = "test-shopify-api-secret"
@@ -89,5 +94,52 @@ describe("readShopifyShopId", () => {
     expect(readShopifyShopId({ shop_id: 954889 })).toBe(954889)
     expect(readShopifyShopId({ shop_id: "954889" })).toBe(954889)
     expect(readShopifyShopId({})).toBeNull()
+  })
+})
+
+describe("buildShopifyOAuthRedirectUri", () => {
+  const envKeys = [
+    "HOST",
+    "SHOPIFY_APP_URL",
+    "SHOPIFY_OAUTH_REDIRECT_ORIGIN",
+    "SHOPIFY_ALLOW_TUNNEL_OAUTH",
+  ] as const
+  const saved: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const key of envKeys) {
+      saved[key] = process.env[key]
+      delete process.env[key]
+    }
+  })
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (saved[key] === undefined) delete process.env[key]
+      else process.env[key] = saved[key]
+    }
+  })
+
+  it("defaults to the Partner-whitelisted production callback (not the rotating tunnel)", () => {
+    process.env.HOST = "https://mineral-butler-resolution-secret.trycloudflare.com"
+    expect(buildShopifyOAuthRedirectUri("http://localhost:3000")).toBe(
+      "https://origin-pass.vercel.app/api/shopify/auth/callback",
+    )
+  })
+
+  it("uses the tunnel only when SHOPIFY_ALLOW_TUNNEL_OAUTH=1", () => {
+    process.env.HOST = "https://mineral-butler-resolution-secret.trycloudflare.com"
+    process.env.SHOPIFY_ALLOW_TUNNEL_OAUTH = "1"
+    expect(buildShopifyOAuthRedirectUri("http://localhost:3000")).toBe(
+      "https://mineral-butler-resolution-secret.trycloudflare.com/api/shopify/auth/callback",
+    )
+  })
+
+  it("honors SHOPIFY_OAUTH_REDIRECT_ORIGIN override", () => {
+    process.env.SHOPIFY_OAUTH_REDIRECT_ORIGIN = "https://origin-pass.vercel.app"
+    process.env.HOST = "https://some-tunnel.trycloudflare.com"
+    expect(buildShopifyOAuthRedirectUri("http://localhost:3000")).toBe(
+      "https://origin-pass.vercel.app/api/shopify/auth/callback",
+    )
   })
 })

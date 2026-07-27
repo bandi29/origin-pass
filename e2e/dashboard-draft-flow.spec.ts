@@ -4,10 +4,10 @@ const hasAuthCreds = !!process.env.E2E_EMAIL && !!process.env.E2E_PASSWORD
 
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/en/login")
-  await page.getByPlaceholder("you@brand.com").fill(process.env.E2E_EMAIL || "")
-  await page.getByPlaceholder("Your password").fill(process.env.E2E_PASSWORD || "")
-  await page.getByRole("button", { name: "Sign In" }).click()
-  await page.waitForURL(/\/dashboard/)
+  await page.locator("#login-email").fill(process.env.E2E_EMAIL || "")
+  await page.locator("#login-password").fill(process.env.E2E_PASSWORD || "")
+  await page.getByRole("button", { name: /^Sign in$/i }).click()
+  await page.waitForURL(/\/(en\/)?(dashboard|signup\/complete)/, { timeout: 45000 })
 }
 
 function draftPayload(overrides?: Record<string, unknown>) {

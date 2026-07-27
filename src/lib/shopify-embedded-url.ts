@@ -7,13 +7,69 @@
  */
 export type ShopifyExternalOpenMode = "blank" | "top"
 
+function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase()
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1"
+}
+
+/**
+ * Server actions bake `NEXT_PUBLIC_BASE_URL` (often `http://localhost:3000` in .env.local).
+ * During `shopify:dev` the Admin iframe is served from the Cloudflare tunnel host, so
+ * opening localhost in a new tab is confusing / wrong for merchants. Rewrite loopback
+ * public URLs to the current embed origin (tunnel or production).
+ */
+export function resolveShopifyPublicOpenUrl(url: string, embedOrigin?: string): string {
+  const raw = String(url || "").trim()
+  if (!raw) return raw
+  const originHint =
+    embedOrigin ??
+    (typeof window !== "undefined" ? window.location?.origin ?? "" : "")
+  try {
+    const parsed = new URL(raw, originHint || "http://localhost:3000")
+    if (!isLoopbackHost(parsed.hostname)) return parsed.toString()
+    if (!originHint) return parsed.toString()
+    const origin = new URL(originHint)
+    if (isLoopbackHost(origin.hostname)) return parsed.toString()
+    // Rebuild from embed origin so localhost:3000 does not keep a stale port.
+    return new URL(`${parsed.pathname}${parsed.search}${parsed.hash}`, origin.origin).toString()
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * Absolute URL for top-level navigation out of the Admin iframe.
+ * Relative paths like `/api/shopify/auth` resolve against `admin.shopify.com` when
+ * assigned to `window.top` — breaking OAuth. Always anchor to the iframe origin.
+ */
+export function absolutizeEmbedUrl(url: string, embedOrigin?: string): string {
+  const raw = String(url || "").trim()
+  if (!raw) return raw
+  if (/^https?:\/\//i.test(raw)) return raw
+  const origin =
+    embedOrigin ||
+    (typeof window !== "undefined" ? window.location?.origin ?? "" : "")
+  if (!origin) return raw
+  try {
+    return new URL(raw, origin).toString()
+  } catch {
+    return raw
+  }
+}
+
 export function openOutsideShopifyEmbed(
   url: string,
   mode: ShopifyExternalOpenMode = "blank",
 ): boolean {
   if (typeof window === "undefined") return false
-  const target = String(url || "").trim()
-  if (!target) return false
+  const resolved = String(url || "").trim()
+  if (!resolved) return false
+  // Public passport / certificate links: prefer tunnel/prod origin over baked localhost.
+  // OAuth / billing (`top`): absolutize so top-window navigation stays on the app host.
+  const target =
+    mode === "blank"
+      ? resolveShopifyPublicOpenUrl(resolved)
+      : absolutizeEmbedUrl(resolved)
 
   if (mode === "top") {
     try {

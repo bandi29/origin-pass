@@ -24,6 +24,15 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: EIGHT_MB,
+      // Shopify CLI loads the embed via *.trycloudflare.com; without this, Server
+      // Action POSTs fail origin checks and app-home never leaves "Connecting…".
+      allowedOrigins: [
+        "*.trycloudflare.com",
+        "*.cloudflare.com",
+        "admin.shopify.com",
+        "*.myshopify.com",
+        "localhost:3000",
+      ],
     },
     // Dashboard pages are dynamic (per-user, per-request data). The App Router's
     // client router cache can otherwise serve a stale RSC payload after a <Link>

@@ -31,6 +31,7 @@ import {
   OAUTH_LOOP_MAX_REDIRECTS,
   registerOAuthRedirect,
 } from "@/lib/shopify-oauth-loop-guard"
+import { checkStoreConnection } from "@/lib/shopify-connection-check"
 import { appendPassportPreviewQuery } from "@/lib/public-passport-consumer"
 import {
   getShopifySyncProgress,
@@ -47,10 +48,16 @@ import {
 async function getSessionToken(): Promise<string | undefined> {
   if (typeof window === "undefined" || !window.shopify) return undefined
   // One retry: App Bridge's first idToken() can reject transiently right after init.
-  // A single quiet retry avoids a spurious "not connected" → OAuth redirect.
+  // Cap wait time — a hung idToken() left the home screen on "Connecting…" forever.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await window.shopify.idToken()
+      const token = await Promise.race([
+        window.shopify.idToken(),
+        new Promise<undefined>((resolve) => {
+          window.setTimeout(() => resolve(undefined), 2500)
+        }),
+      ])
+      if (token) return token
     } catch {
       if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 300))
     }
@@ -383,17 +390,41 @@ export default function ShopifyAppHomePage() {
   useEffect(() => {
     if (!shop) return
     let active = true
-    getSessionToken()
-      .then((token) => isStoreConnected(shop, token))
-      .then((ok) => {
-        if (!active) return
-        setConnected(ok)
-      })
-      .finally(() => {
-        if (active) setConnectionLoaded(true)
-      })
+    let cancelled = false
+    ;(async () => {
+      // Retry through tunnel/Turbopack warm-up. Only OAuth when we get a clear
+      // `connected: false` — transient failures used to flash an error then work on refresh.
+      for (let round = 0; round < 4 && !cancelled; round++) {
+        const token = await getSessionToken()
+        const { connected: result } = await checkStoreConnection({
+          shop,
+          sessionToken: token,
+          fallback: round === 0 ? isStoreConnected : undefined,
+          attempts: round === 0 ? 3 : 2,
+        })
+        if (!active || cancelled) return
+        if (result === true) {
+          setConnected(true)
+          setConnectionLoaded(true)
+          return
+        }
+        if (result === false) {
+          setConnected(false)
+          setConnectionLoaded(true)
+          return
+        }
+        // null = transient — keep "Connecting…" and retry
+        await new Promise((r) => setTimeout(r, 500 * (round + 1)))
+      }
+      if (!active || cancelled) return
+      // Still unknown after retries — do not OAuth-loop; show recoverable blocked state.
+      setConnected(false)
+      setConnectionLoaded(true)
+      setAuthBlocked(true)
+    })()
     return () => {
       active = false
+      cancelled = true
     }
   }, [shop])
 
@@ -423,6 +454,25 @@ export default function ShopifyAppHomePage() {
     if (!connected) return
     clearOAuthRedirects(typeof window !== "undefined" ? window.sessionStorage : null)
   }, [connected])
+
+  // Recover from prior failed OAuth loops (whitelist / access_denied) without DevTools.
+  // One-time per tab session + whenever we return with ?oauth_error=.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const storage = window.sessionStorage
+    const resetKey = "originpass:oauth-guard-reset-v3"
+    const oauthError = searchParams.get("oauth_error")
+    if (!storage.getItem(resetKey) || oauthError) {
+      clearOAuthRedirects(storage)
+      storage.setItem(resetKey, "1")
+    }
+    if (oauthError) {
+      // Drop the flag from the URL so Reload doesn't keep re-clearing forever.
+      const url = new URL(window.location.href)
+      url.searchParams.delete("oauth_error")
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     return () => {
@@ -1311,7 +1361,10 @@ export default function ShopifyAppHomePage() {
                       isSelected={selected.has(product.id)}
                       quantity={quantities[product.id] ?? 1}
                       editorHref={productEditorHref(product.id)}
-                      passportPreviewHref={appendPassportPreviewQuery(product.url, { shop, host })}
+                      passportPreviewHref={appendPassportPreviewQuery(product.previewUrl || product.url, {
+                        shop,
+                        host,
+                      })}
                       onToggle={toggle}
                       onQuantityChange={setProductQuantity}
                     />

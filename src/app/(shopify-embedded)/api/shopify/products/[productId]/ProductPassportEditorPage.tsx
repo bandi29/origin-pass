@@ -17,6 +17,7 @@ import { ConflictResolutionPanel } from "@/components/verification/ConflictResol
 import { FieldLineageBadge } from "@/components/verification/FieldLineageBadge"
 import { resolveFieldLineage } from "@/lib/field-lineage"
 import { openOutsideShopifyEmbed, shopifyEmbeddedHomeHref } from "@/lib/shopify-embedded-url"
+import { checkStoreConnection } from "@/lib/shopify-connection-check"
 import { useShopifyContextualSave } from "@/app/(shopify-embedded)/ShopifyContextualSaveBar"
 import { ShopifyAppTitleBar } from "@/app/(shopify-embedded)/ShopifyAppTitleBar"
 
@@ -166,14 +167,30 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
       return
     }
     let active = true
-    getSessionToken()
-      .then((token) => isStoreConnected(shop, token))
-      .then((ok) => {
-        if (!active) return
-        setConnected(ok)
-        if (!ok && connectUrl) {
-          openOutsideShopifyEmbed(connectUrl, "top")
-        }
+    ;(async () => {
+      const token = await getSessionToken()
+      let result = await checkStoreConnection({
+        shop,
+        sessionToken: token,
+        fallback: isStoreConnected,
+        attempts: 3,
+      })
+      if (!active) return
+      if (result.connected == null) {
+        result = await checkStoreConnection({ shop, sessionToken: await getSessionToken(), attempts: 2 })
+      }
+      if (!active) return
+      if (result.connected === true) {
+        setConnected(true)
+        return
+      }
+      if (result.connected === false && connectUrl) {
+        setConnected(false)
+        openOutsideShopifyEmbed(connectUrl, "top")
+      }
+    })()
+      .catch(() => {
+        if (active) setConnected(false)
       })
       .finally(() => {
         if (active) setAuthChecking(false)

@@ -167,7 +167,9 @@ describe("Scenario matrix - GS1 Digital Link (GS1-01 GS1-06)", () => {
     expect(target).toBe("/sp/demo/999")
 
     const route = readSrc("src/app/01/[...gs1Path]/route.ts")
-    expect(route).toMatch(/NextResponse\.redirect\(target,\s*307\)/)
+    expect(route).toContain("relativeRedirectLocation")
+    expect(route).toMatch(/status:\s*307/)
+    expect(route).toContain("Location: location")
     const proxy = readSrc("src/proxy.ts")
     expect(proxy).toContain('"/01/:path*"')
     expect(proxy).toMatch(/sp\|shop\|01/)
@@ -219,7 +221,8 @@ describe("Scenario matrix - GS1 Digital Link (GS1-01 GS1-06)", () => {
     expect(wantsGs1MachinePayload("application/ld+json")).toBe(true)
     expect(wantsGs1MachinePayload("text/html")).toBe(false)
     const route = readSrc("src/app/01/[...gs1Path]/route.ts")
-    expect(route).toMatch(/NextResponse\.redirect\(target,\s*307\)/)
+    expect(route).toContain("relativeRedirectLocation")
+    expect(route).toMatch(/status:\s*307/)
     expect(route).toMatch(/wantsGs1MachinePayload/)
   })
 

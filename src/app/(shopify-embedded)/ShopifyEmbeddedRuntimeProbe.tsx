@@ -2,22 +2,45 @@
 
 import { useEffect, useState, type ReactNode } from "react"
 
+const CHUNK_RELOAD_KEY = "originpass:chunk-reload-once"
+
+const TRANSIENT_LOAD_RE =
+  /Loading chunk|ChunkLoadError|Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i
+
 /**
  * Surfaces uncaught client errors in the iframe instead of a silent white screen.
  * Render errors are handled by error.tsx; this catches script/runtime failures.
+ *
+ * First load through a fresh Cloudflare tunnel often throws a one-shot chunk
+ * load error that a refresh fixes -- auto-reload once for those, then show UI.
  */
 export function ShopifyEmbeddedRuntimeProbe({ children }: { children: ReactNode }) {
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
 
   useEffect(() => {
+    const handle = (message: string) => {
+      if (TRANSIENT_LOAD_RE.test(message) && typeof window !== "undefined") {
+        try {
+          if (!window.sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+            window.sessionStorage.setItem(CHUNK_RELOAD_KEY, "1")
+            window.location.reload()
+            return
+          }
+        } catch {
+          // sessionStorage blocked -- fall through to banner
+        }
+      }
+      setRuntimeError(message || "Unknown script error")
+    }
+
     const onError = (event: ErrorEvent) => {
-      setRuntimeError(event.message || "Unknown script error")
+      handle(event.message || "Unknown script error")
     }
     const onRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason
       const message =
         reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "Unhandled error"
-      setRuntimeError(message)
+      handle(message)
     }
 
     window.addEventListener("error", onError)
@@ -26,6 +49,18 @@ export function ShopifyEmbeddedRuntimeProbe({ children }: { children: ReactNode 
       window.removeEventListener("error", onError)
       window.removeEventListener("unhandledrejection", onRejection)
     }
+  }, [])
+
+  // After a stable load, allow a future one-shot auto-reload in this tab.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      try {
+        window.sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+      } catch {
+        // ignore
+      }
+    }, 5000)
+    return () => window.clearTimeout(t)
   }, [])
 
   return (

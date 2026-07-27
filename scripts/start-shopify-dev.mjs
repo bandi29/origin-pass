@@ -34,6 +34,12 @@ if (useLocalhost) {
 console.log("[shopify-dev] Open the Preview URL from the CLI, then click Web in Dev Console.")
 console.log("[shopify-dev] After start, run: npm run shopify:embed:check")
 console.log("[shopify-dev] Hard-refresh the Shopify admin tab after each restart (tunnel URL changes).")
+console.log(
+  "[shopify-dev] OAuth callback defaults to https://origin-pass.vercel.app/api/shopify/auth/callback (Partner-whitelisted).",
+)
+console.log(
+  "[shopify-dev] If you see redirect_uri is not whitelisted, you are on a tunnel callback — restart Next after pulling latest, or set SHOPIFY_ALLOW_TUNNEL_OAUTH=1 only after Partners lists that tunnel.",
+)
 console.log("[shopify-dev] originpass.com is NOT deployed yet — sidebar alone will stay blank without this dev server.")
 
 const child = spawn("npx", args, {

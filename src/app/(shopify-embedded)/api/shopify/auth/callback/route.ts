@@ -11,21 +11,45 @@ export const dynamic = "force-dynamic"
  * token → upsert the store row in Supabase (`organizations`, keyed by
  * `shop_domain`) → redirect back into the embedded app home.
  */
+function oauthFailureRedirect(shop: string | null, host: string, reason: string): NextResponse {
+  const embeddedReturn = shop ? buildShopifyEmbeddedAppReturnUrl(shop, host) : null
+  if (embeddedReturn) {
+    const url = new URL(embeddedReturn)
+    url.searchParams.set("oauth_error", reason)
+    return NextResponse.redirect(url)
+  }
+  return NextResponse.json({ error: reason }, { status: 400 })
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const params = request.nextUrl.searchParams
   const shop = params.get("shop")
   const code = params.get("code")
   // OAuth `state` carries the embedded admin `host` param we set at authorize time.
   const host = params.get("state") ?? params.get("host") ?? ""
+  const oauthError = params.get("error")
+
+  // Shopify may bounce back with error=access_denied (no code). Never leave the
+  // merchant on a raw JSON 400 inside Admin — send them home with a flag.
+  if (oauthError) {
+    console.warn("[shopify/auth/callback] provider error:", oauthError, params.get("error_description"))
+    return oauthFailureRedirect(shop, host, oauthError)
+  }
 
   // 1. Validate the inputs we control redirects/queries with.
   if (!isValidShopDomain(shop) || !code) {
-    return NextResponse.json({ error: "Invalid OAuth request." }, { status: 400 })
+    console.warn("[shopify/auth/callback] missing shop/code", {
+      hasShop: Boolean(shop),
+      hasCode: Boolean(code),
+      keys: [...params.keys()],
+    })
+    return oauthFailureRedirect(shop, host, "invalid_oauth_request")
   }
 
   // 2. Confirm the request genuinely came from Shopify.
   if (!verifyShopifyHmac(params)) {
-    return NextResponse.json({ error: "HMAC validation failed." }, { status: 401 })
+    console.warn("[shopify/auth/callback] HMAC validation failed for", shop)
+    return oauthFailureRedirect(shop, host, "hmac_failed")
   }
 
   // 3. Trade the temporary code for the offline token GRANT (Shopify now issues

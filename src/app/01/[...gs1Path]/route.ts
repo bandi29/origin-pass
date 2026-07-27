@@ -9,6 +9,10 @@ import {
   publicPassportTargetPath,
   wantsGs1MachinePayload,
 } from "@/lib/gs1-http"
+import {
+  relativeRedirectLocation,
+  resolvePublicRequestHref,
+} from "@/lib/public-request-origin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -33,7 +37,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const classification = await classifyGs1DigitalLinkRequest(segments)
     const accept = request.headers.get("accept")
     const machine = wantsGs1MachinePayload(accept)
-    const requestUrl = request.nextUrl.href
+    // Prefer forwarded tunnel/prod host - shopify:dev proxies to localhost:3000.
+    const requestUrl = resolvePublicRequestHref(request)
 
     if (classification.kind === "invalid_structure") {
       if (machine) {
@@ -94,15 +99,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     // targetPath may already include ?variant= from publicPassportTargetPath.
-    const target = new URL(targetPath, request.url)
+    // Dummy base only for URL/searchParams. Location must be host-relative so
+    // Cloudflare tunnel traffic is not bounced to https://localhost:3000/...
+    const target = new URL(targetPath, "http://originpass.local")
     if (product.lot) target.searchParams.set("lot", product.lot)
     if (product.serial) target.searchParams.set("serial", product.serial)
     if (product.externalVariantId && !target.searchParams.has("variant")) {
       target.searchParams.set("variant", product.externalVariantId)
     }
 
+    const location = relativeRedirectLocation(`${target.pathname}${target.search}`)
+
     // GS1-03: browser follows 307 to the styled public passport landing page.
-    return NextResponse.redirect(target, 307)
+    // Use a relative Location (not NextResponse.redirect absolute URL) so the
+    // browser stays on the public host (tunnel / Vercel / localhost).
+    return new NextResponse(null, {
+      status: 307,
+      headers: { Location: location },
+    })
   } catch {
     return new NextResponse(notFoundPassportHtml(), {
       status: 404,
