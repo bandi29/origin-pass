@@ -9,6 +9,7 @@ import { DataTable } from "@/components/ui/DataTable"
 import { UpgradeNudge } from "@/components/saas/UpgradeNudge"
 import { AnalyticsTeaser } from "@/components/saas/AnalyticsTeaser"
 import { FadeIn } from "@/components/layout/FadeIn"
+import { DocumentationGuidesCallout } from "@/components/marketing/DocumentationGuidesCallout"
 
 const quickLinks = [
   {
@@ -50,6 +51,8 @@ export default function DashboardOverviewPage() {
       />
 
       <UpgradeNudge />
+
+      <DocumentationGuidesCallout />
 
       <AnalyticsTeaser />
 

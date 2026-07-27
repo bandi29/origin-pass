@@ -46,6 +46,7 @@ import {
   QR_IDENTITY_PATHS,
   QR_IDENTITY_SUITE_BASE,
 } from "@/lib/qr-identity-nav"
+import { DocumentationGuidesCallout } from "@/components/marketing/DocumentationGuidesCallout"
 
 type NavItem = {
   key: string
@@ -634,6 +635,8 @@ export default function DashboardSidebar() {
             </section>
           )
         })}
+
+        <DocumentationGuidesCallout compact className="mt-2" />
       </nav>
     </aside>
   )

@@ -8,6 +8,7 @@ import { useShopifyContextualSave } from "@/app/(shopify-embedded)/ShopifyContex
 import { ShopifyAppTitleBar } from "@/app/(shopify-embedded)/ShopifyAppTitleBar"
 import { ComplianceFAQ } from "@/components/ComplianceFAQ"
 import { OnboardingGuide } from "@/components/OnboardingGuide"
+import { DocumentationGuidesCallout } from "@/components/marketing/DocumentationGuidesCallout"
 import { CertificateField } from "./CertificateField"
 import { EvidenceUpgradeBanner } from "./EvidenceUpgradeBanner"
 import { MerchantCatalogEmptyState } from "./MerchantCatalogEmptyState"
@@ -1435,6 +1436,8 @@ export default function ShopifyAppHomePage() {
             Shopify&apos;s Bulk API. This process takes 2–3 minutes; you can safely navigate away.
           </p>
         </div>
+
+        <DocumentationGuidesCallout absoluteLinks className="shadow-none" />
 
         <ComplianceFAQ />
           </>

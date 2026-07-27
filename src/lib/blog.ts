@@ -76,3 +76,30 @@ export function blogIndexOgImage(): string {
   return `${BLOG_SITE_URL}/blog/opengraph-image`
 }
 
+/** Public guide routes (unprefixed; keep outside next-intl Link). */
+export const BLOG_PATHS = {
+  home: "/blog",
+  espr: "/blog/eu-espr-compliance-shopify-apparel-brands",
+  gs1: "/blog/gs1-digital-link-qr-code-clothing-hangtags",
+} as const
+
+export const BLOG_GUIDE_LINKS = [
+  {
+    key: "espr",
+    label: "EU ESPR Compliance Guide",
+    href: BLOG_PATHS.espr,
+    shortLabel: "EU ESPR guide",
+  },
+  {
+    key: "gs1",
+    label: "GS1 QR Hangtag Tutorial",
+    href: BLOG_PATHS.gs1,
+    shortLabel: "GS1 QR hangtags",
+  },
+] as const
+
+export function blogAbsolutePath(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`
+  return `${BLOG_SITE_URL}${normalized}`
+}
+
