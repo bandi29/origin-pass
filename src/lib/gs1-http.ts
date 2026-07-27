@@ -19,6 +19,18 @@ export const GS1_INVALID_STRUCTURE_MESSAGE = "Invalid GS1 Identifier Structure"
 export const GS1_NOT_FOUND_MESSAGE =
   "No active passport exists for this product identifier."
 
+/**
+ * Escape text before interpolating into the error HTML below. Today's callers pass
+ * only the constants above, but this is a public, unauthenticated endpoint that
+ * receives attacker-controlled GTIN input — so the templates must never trust a
+ * `message` argument, or a future caller wiring in request text becomes XSS.
+ */
+function escapeHtml(value: string): string {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) =>
+    ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch === '"' ? "&quot;" : "&#39;",
+  )
+}
+
 export type Gs1HttpClassification =
   | { kind: "invalid_structure"; message: string; parts: GS1DigitalLinkParts | null }
   | { kind: "not_found"; message: string; parts: GS1DigitalLinkParts | null }
@@ -126,7 +138,7 @@ export function invalidStructureHtml(message = GS1_INVALID_STRUCTURE_MESSAGE): s
 </head>
 <body>
   <main>
-    <h1>${message}</h1>
+    <h1>${escapeHtml(message)}</h1>
     <p>The Digital Link GTIN is missing, non-numeric, or has an invalid length / check digit.</p>
   </main>
 </body>
@@ -151,7 +163,7 @@ export function notFoundPassportHtml(message = GS1_NOT_FOUND_MESSAGE): string {
 <body>
   <main>
     <h1>Product passport not found</h1>
-    <p>${message}</p>
+    <p>${escapeHtml(message)}</p>
   </main>
 </body>
 </html>`

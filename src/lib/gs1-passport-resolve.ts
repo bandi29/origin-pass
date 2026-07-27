@@ -61,17 +61,27 @@ function productionFromCompliance(compliance: Record<string, unknown> | null): s
   return typeof v === "string" && v.trim() ? v.trim() : null
 }
 
-/** Candidate GTIN strings to try against the DB (padded + unpadded variants). */
+/** Valid GTIN lengths a stored identifier may take (GTIN-8/12/13/14). */
+const GTIN_CANDIDATE_LENGTHS = [8, 12, 13, 14] as const
+
+/**
+ * Candidate GTIN strings to try against the DB.
+ *
+ * A GTIN's identity is its numeric value with leading zeros normalized — the
+ * same product may be stored as GTIN-8/UPC-A/EAN-13/GTIN-14. We therefore match
+ * the zero-stripped value re-padded to each valid length that can hold it.
+ *
+ * We must NOT blindly slice leading characters (the old `padded.slice(2)`): that
+ * dropped *significant* digits from a GTIN with no leading zeros, so scanning one
+ * product could resolve a different product whose GTIN was that truncation.
+ */
 export function gtinLookupCandidates(gtin: string): string[] {
   const digits = normalizeGtinDigits(gtin)
   if (!digits) return []
-  const padded = padGTIN(digits)
   const stripped = digits.replace(/^0+/, "") || "0"
-  const set = new Set<string>([digits, padded])
-  if (stripped !== digits) set.add(stripped)
-  if (padded.length === 14) {
-    set.add(padded.slice(1))
-    set.add(padded.slice(2))
+  const set = new Set<string>([digits, stripped])
+  for (const len of GTIN_CANDIDATE_LENGTHS) {
+    if (stripped.length <= len) set.add(stripped.padStart(len, "0"))
   }
   return [...set]
 }
@@ -183,6 +193,8 @@ async function findProductByGtin(gtin: string): Promise<ProductLookupRow | null>
     .select(PRODUCT_SELECT)
     .in("gtin", candidates)
     .eq("is_archived", false)
+    // Deterministic tie-break if a GTIN ever collides (e.g. two stores, same GTIN).
+    .order("id", { ascending: true })
     .limit(1)
     .maybeSingle()
 
@@ -204,6 +216,8 @@ async function findByVariantGtin(
     .from("passports")
     .select("id, gtin, external_variant_id, serial_number, verify_token, passport_uid, product_id")
     .in("gtin", candidates)
+    // Deterministic tie-break if a variant GTIN ever collides.
+    .order("id", { ascending: true })
     .limit(1)
     .maybeSingle()
 

@@ -3,7 +3,9 @@ import {
   GS1_INVALID_STRUCTURE_MESSAGE,
   GS1_NOT_FOUND_MESSAGE,
   classifyGs1DigitalLinkRequest,
+  invalidStructureHtml,
   isMalformedGtinIdentifier,
+  notFoundPassportHtml,
   publicPassportTargetPath,
   wantsGs1MachinePayload,
 } from "./gs1-http"
@@ -101,6 +103,27 @@ describe("gs1-http scenario helpers", () => {
         expect(result.product.serial).toBe("SER-42")
         expect(publicPassportTargetPath(result.product)).toBe("/sp/demo/999")
       }
+    })
+  })
+
+  describe("error HTML is XSS-safe (public unauthenticated endpoint)", () => {
+    const payload = `<script>alert('xss')</script>`
+
+    it("escapes an attacker-controlled message in the invalid-structure page", () => {
+      const html = invalidStructureHtml(payload)
+      expect(html).not.toContain("<script>alert")
+      expect(html).toContain("&lt;script&gt;")
+    })
+
+    it("escapes an attacker-controlled message in the not-found page", () => {
+      const html = notFoundPassportHtml(payload)
+      expect(html).not.toContain("<script>alert")
+      expect(html).toContain("&lt;script&gt;")
+    })
+
+    it("still renders the default constant messages verbatim", () => {
+      expect(invalidStructureHtml()).toContain(GS1_INVALID_STRUCTURE_MESSAGE)
+      expect(notFoundPassportHtml()).toContain(GS1_NOT_FOUND_MESSAGE)
     })
   })
 })

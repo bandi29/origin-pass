@@ -1,10 +1,12 @@
 "use client"
 
-import { useRef } from "react"
-import { Download } from "lucide-react"
+import { useRef, useState } from "react"
+import { Download, FileDown } from "lucide-react"
 import { QRCodeCanvas, QRCodeSVG } from "qrcode.react"
+import { ExportPdfModal } from "@/components/admin/ExportPdfModal"
 
 type PassportQRTabProps = {
+  passportId: string
   passportUid: string
   serialNumber: string
   verifyToken?: string
@@ -18,6 +20,7 @@ type PassportQRTabProps = {
  * already-rendered DOM nodes, so no extra runtime dependency is required.
  */
 export function PassportQRTab({
+  passportId,
   passportUid,
   serialNumber,
   verifyToken,
@@ -27,6 +30,7 @@ export function PassportQRTab({
   const verifyUrl = `${baseUrl}/verify/${token}`
   const canvasContainerRef = useRef<HTMLDivElement | null>(null)
   const svgContainerRef = useRef<HTMLDivElement | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const handleDownloadPng = () => {
     const canvas = canvasContainerRef.current?.querySelector("canvas")
@@ -92,6 +96,14 @@ export function PassportQRTab({
               <Download className="h-4 w-4" />
               Download SVG
             </button>
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              <FileDown className="h-4 w-4" />
+              Export Print PDF
+            </button>
           </div>
         </div>
       </div>
@@ -101,6 +113,13 @@ export function PassportQRTab({
           {`<img src="${verifyUrl}" alt="Verify product authenticity" width="120" height="120" />`}
         </pre>
       </div>
+
+      <ExportPdfModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        passportId={passportId}
+        serialNumber={serialNumber}
+      />
     </div>
   )
 }

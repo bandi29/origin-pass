@@ -10,6 +10,8 @@ loadEnvLocalIntoProcess()
 const EIGHT_MB = 8 * 1024 * 1024
 
 const nextConfig: NextConfig = {
+  // Keep Yoga / fontkit out of the Turbopack client graph for PDF export routes.
+  serverExternalPackages: ["@react-pdf/renderer"],
   // Shopify CLI tunnels (Cloudflare) load the app from *.trycloudflare.com while
   // assets are served from localhost — allow those origins in dev or the iframe goes blank.
   allowedDevOrigins: ["*.trycloudflare.com", "*.cloudflare.com"],

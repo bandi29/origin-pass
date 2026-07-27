@@ -11,6 +11,8 @@ import {
   type ProductPassportEditorData,
 } from "../../app-home/actions"
 import { gtinFormatLabel, normalizeGtinDigits, validateGTIN } from "@/lib/gs1"
+import { calculateComplianceScore } from "@/lib/compliance-score"
+import { ComplianceScorecard } from "@/components/admin/ComplianceScorecard"
 import { ConflictResolutionPanel } from "@/components/verification/ConflictResolutionPanel"
 import { FieldLineageBadge } from "@/components/verification/FieldLineageBadge"
 import { resolveFieldLineage } from "@/lib/field-lineage"
@@ -22,6 +24,7 @@ const PRODUCT_SAVE_BAR_ID = "product-passport-save-bar"
 
 const PRODUCTION_MAX = 120
 const CARE_MAX = 500
+const MATERIALS_MAX = 500
 
 const cardClass = "rounded-xl border border-[#e3e3e3] bg-white p-6 shadow-[0_1px_0_rgba(0,0,0,0.05)]"
 const fieldClass =
@@ -96,6 +99,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const [product, setProduct] = useState<ProductPassportEditorData | null>(null)
   const [productionLocation, setProductionLocation] = useState("")
   const [careInstructions, setCareInstructions] = useState("")
+  const [materials, setMaterials] = useState("")
   const [gtin, setGtin] = useState("")
   const [gln, setGln] = useState("")
   const [defaultLotNumber, setDefaultLotNumber] = useState("")
@@ -103,6 +107,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const [variantGtins, setVariantGtins] = useState<Record<string, string>>({})
   const [savedProduction, setSavedProduction] = useState("")
   const [savedCare, setSavedCare] = useState("")
+  const [savedMaterials, setSavedMaterials] = useState("")
   const [savedGtin, setSavedGtin] = useState("")
   const [savedGln, setSavedGln] = useState("")
   const [savedLot, setSavedLot] = useState("")
@@ -133,12 +138,14 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
       for (const v of data.variants ?? []) variantMap[v.passportId] = v.gtin
       setProductionLocation(data.productionLocation)
       setCareInstructions(data.careInstructions)
+      setMaterials(data.materials)
       setGtin(data.gtin)
       setGln(data.gln)
       setDefaultLotNumber(data.defaultLotNumber)
       setVariantGtins(variantMap)
       setSavedProduction(data.productionLocation)
       setSavedCare(data.careInstructions)
+      setSavedMaterials(data.materials)
       setSavedGtin(data.gtin)
       setSavedGln(data.gln)
       setSavedLot(data.defaultLotNumber)
@@ -197,6 +204,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const hasUnsavedChanges =
     (productionEditing ? productionLocation : "") !== savedProduction ||
     (careEditing ? careInstructions : "") !== savedCare ||
+    materials.trim() !== savedMaterials.trim() ||
     gtinDigits !== normalizeGtinDigits(savedGtin) ||
     normalizeGtinDigits(gln) !== normalizeGtinDigits(savedGln) ||
     defaultLotNumber.trim() !== savedLot.trim() ||
@@ -205,6 +213,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const formFingerprint = [
     productionEditing ? productionLocation : "",
     careEditing ? careInstructions : "",
+    materials.trim(),
     gtinDigits,
     normalizeGtinDigits(gln),
     defaultLotNumber.trim(),
@@ -238,6 +247,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
         sessionToken,
         productionLocation: productionEditing ? productionLocation : "",
         careInstructions: careEditing ? careInstructions : "",
+        materials: materials.trim(),
         gtin: gtinDigits,
         gln: normalizeGtinDigits(gln),
         defaultLotNumber: defaultLotNumber.trim(),
@@ -252,8 +262,10 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
         for (const v of result.variants ?? []) variantMap[v.passportId] = v.gtin
         setSavedProduction(result.productionLocation)
         setSavedCare(result.careInstructions)
+        setSavedMaterials(result.materials)
         setProductionLocation(result.productionLocation)
         setCareInstructions(result.careInstructions)
+        setMaterials(result.materials)
         setGtin(result.gtin)
         setGln(result.gln)
         setDefaultLotNumber(result.defaultLotNumber)
@@ -282,6 +294,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
     productionLocation,
     careEditing,
     careInstructions,
+    materials,
     gtinDigits,
     gln,
     defaultLotNumber,
@@ -292,6 +305,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
   const handleDiscard = useCallback(() => {
     setProductionLocation(savedProduction)
     setCareInstructions(savedCare)
+    setMaterials(savedMaterials)
     setGtin(savedGtin)
     setGln(savedGln)
     setDefaultLotNumber(savedLot)
@@ -300,7 +314,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
     setVariantGtinTouched({})
     setProductionEditing(Boolean(savedProduction.trim()))
     setCareEditing(Boolean(savedCare.trim()))
-  }, [savedProduction, savedCare, savedGtin, savedGln, savedLot, savedVariantGtins])
+  }, [savedProduction, savedCare, savedMaterials, savedGtin, savedGln, savedLot, savedVariantGtins])
 
   const { nativeSaveBarActive, saveBarFormProps, hiddenInputRef } = useShopifyContextualSave({
     id: PRODUCT_SAVE_BAR_ID,
@@ -342,6 +356,40 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
       })
     : null
 
+  const complianceScore = useMemo(() => {
+    if (!product) return null
+    const effectiveOrigin =
+      (productionEditing ? productionLocation : savedProduction).trim() ||
+      product.brandProductionLocation.trim()
+    const effectiveCare =
+      (careEditing ? careInstructions : savedCare).trim() || product.brandCareInstructions.trim()
+    return calculateComplianceScore({
+      productGtin: gtin,
+      variantGtins: Object.values(variantGtins),
+      countryOfOrigin: effectiveOrigin,
+      materialComposition: materials,
+      careInstructions: effectiveCare,
+      hasComplianceDocument:
+        hasProductCertProduction ||
+        hasProductCertCare ||
+        product.brandCertProduction ||
+        product.brandCertCare,
+    })
+  }, [
+    product,
+    productionEditing,
+    productionLocation,
+    savedProduction,
+    careEditing,
+    careInstructions,
+    savedCare,
+    materials,
+    gtin,
+    variantGtins,
+    hasProductCertProduction,
+    hasProductCertCare,
+  ])
+
   if (authChecking || !connected) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f6f6f7] px-5" role="status" aria-live="polite">
@@ -375,7 +423,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
     )
   }
 
-  const pageShellClass = `min-h-screen bg-[#f6f6f7] px-5 py-8 font-sans text-[#202223] print:hidden ${nativeSaveBarActive ? "pb-8" : "pb-28"}`
+  const pageShellClass = `scroll-smooth min-h-screen bg-[#f6f6f7] px-5 py-8 font-sans text-[#202223] print:hidden ${nativeSaveBarActive ? "pb-8" : "pb-28"}`
 
   const pageBody = (
     <>
@@ -420,8 +468,10 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
           </div>
         </header>
 
+        {complianceScore ? <ComplianceScorecard result={complianceScore} /> : null}
+
         <div className={`${cardClass} space-y-5`}>
-          <div className="space-y-3">
+          <div id="eu-score-origin" className="scroll-mt-6 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <label htmlFor="productProductionLocation" className="text-sm font-medium text-[#202223]">
                 Production location
@@ -451,15 +501,17 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
                     onRevert={revertProductionToBrandDefault}
                   />
                 ) : null}
-                <CertificateField
-                  ref={productionCertRef}
-                  shop={shop}
-                  field="location"
-                  productId={productId}
-                  dataProvenance={productionLineage.valueDiffersFromBrand ? "record" : "fallback"}
-                  conflictMode={productionLineage.isUnverifiedClaim}
-                  onCertChange={() => void load()}
-                />
+                <div id="eu-score-docs" className="scroll-mt-6">
+                  <CertificateField
+                    ref={productionCertRef}
+                    shop={shop}
+                    field="location"
+                    productId={productId}
+                    dataProvenance={productionLineage.valueDiffersFromBrand ? "record" : "fallback"}
+                    conflictMode={productionLineage.isUnverifiedClaim}
+                    onCertChange={() => void load()}
+                  />
+                </div>
               </>
             ) : (
               <>
@@ -472,18 +524,38 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
                     setProductionLocation(savedProduction || product.brandProductionLocation)
                   }}
                 />
-                <CertificateField
-                  shop={shop}
-                  field="location"
-                  productId={productId}
-                  inheritanceMode
-                  onCertChange={() => void load()}
-                />
+                <div id="eu-score-docs" className="scroll-mt-6">
+                  <CertificateField
+                    shop={shop}
+                    field="location"
+                    productId={productId}
+                    inheritanceMode
+                    onCertChange={() => void load()}
+                  />
+                </div>
               </>
             )}
           </div>
 
-          <div className="space-y-3">
+          <div id="eu-score-materials" className="scroll-mt-6 space-y-3">
+            <label htmlFor="productMaterials" className="text-sm font-medium text-[#202223]">
+              Material composition
+            </label>
+            <textarea
+              id="productMaterials"
+              rows={3}
+              maxLength={MATERIALS_MAX}
+              value={materials}
+              onChange={(e) => setMaterials(e.target.value.slice(0, MATERIALS_MAX))}
+              placeholder="e.g. 80% Organic Cotton, 20% Recycled Polyester"
+              className={`${fieldClass} resize-none`}
+            />
+            <p className="text-xs text-[#6d7175]">
+              {materials.length}/{MATERIALS_MAX} · Required for EU ESPR textile disclosures
+            </p>
+          </div>
+
+          <div id="eu-score-care" className="scroll-mt-6 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <label htmlFor="productCareInstructions" className="text-sm font-medium text-[#202223]">
                 Care instructions
@@ -545,7 +617,7 @@ export default function ProductPassportEditorPage({ productId }: { productId: st
             )}
           </div>
 
-          <div className="space-y-4 border-t border-[#e3e3e3] pt-5">
+          <div id="eu-score-gtin" className="scroll-mt-6 space-y-4 border-t border-[#e3e3e3] pt-5">
             <div>
               <h2 className="text-sm font-semibold text-[#202223]">GS1 Digital Link Identifiers</h2>
               <p className="mt-1 text-xs text-[#6d7175]">

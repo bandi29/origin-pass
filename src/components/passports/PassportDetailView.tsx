@@ -167,6 +167,7 @@ export function PassportDetailView({
         )}
         {activeTab === "qr" && (
           <PassportQRTab
+            passportId={passport.id}
             passportUid={passport.passportUid}
             serialNumber={passport.serialNumber}
             verifyToken={passport.verifyToken}

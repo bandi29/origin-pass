@@ -86,6 +86,8 @@ export type ProductPassportEditorData = {
   gln: string
   /** Optional default batch/lot (AI 10). */
   defaultLotNumber: string
+  /** Material / fiber composition (EU ESPR). */
+  materials: string
   /** Synced Shopify variants (passports) with editable GTINs. */
   variants: VariantGtinEditorRow[]
   productionLocation: string
@@ -107,6 +109,7 @@ export type ProductPassportSaveState = {
   message: string
   productionLocation: string
   careInstructions: string
+  materials: string
   gtin: string
   gln: string
   defaultLotNumber: string
@@ -574,7 +577,7 @@ export async function getProductPassportEditor(
       supabase
         .from("products")
         .select(
-          "id, name, sku, image_url, compliance_data, external_product_id, gtin, gln, default_lot_number",
+          "id, name, sku, image_url, materials, compliance_data, external_product_id, gtin, gln, default_lot_number",
         )
         .eq("organization_id", store.id)
         .eq("id", productId)
@@ -642,6 +645,7 @@ export async function getProductPassportEditor(
       gtin: row.gtin?.trim() ?? "",
       gln: row.gln?.trim() ?? "",
       defaultLotNumber: row.default_lot_number?.trim() ?? "",
+      materials: row.materials?.trim() ?? "",
       variants,
       productionLocation: productionValue,
       careInstructions: careValue,
@@ -678,6 +682,7 @@ export async function updateProductPassportFields(input: {
   sessionToken?: string
   productionLocation: string
   careInstructions: string
+  materials?: string
   gtin?: string
   gln?: string
   defaultLotNumber?: string
@@ -686,6 +691,7 @@ export async function updateProductPassportFields(input: {
 }): Promise<ProductPassportSaveState> {
   const rawProduction = input.productionLocation.trim()
   const rawCare = input.careInstructions.trim()
+  const rawMaterials = (input.materials ?? "").trim().slice(0, 500)
   const rawGtin = normalizeGtinDigits(input.gtin ?? "")
   const rawGln = normalizeGtinDigits(input.gln ?? "").slice(0, 13)
   const rawLot = (input.defaultLotNumber ?? "").trim().slice(0, 80)
@@ -702,6 +708,7 @@ export async function updateProductPassportFields(input: {
     message,
     productionLocation: rawProduction,
     careInstructions: rawCare,
+    materials: rawMaterials,
     gtin: rawGtin,
     gln: rawGln,
     defaultLotNumber: rawLot,
@@ -801,6 +808,7 @@ export async function updateProductPassportFields(input: {
     .from("products")
     .update({
       compliance_data: compliance,
+      materials: rawMaterials || null,
       gtin,
       gln,
       default_lot_number: defaultLotNumber,
@@ -845,6 +853,7 @@ export async function updateProductPassportFields(input: {
     message: "Product passport fields saved.",
     productionLocation,
     careInstructions,
+    materials: rawMaterials,
     gtin: rawGtin,
     gln: rawGln,
     defaultLotNumber: rawLot,

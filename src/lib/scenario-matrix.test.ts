@@ -1,6 +1,6 @@
 /**
- * OriginPass validation matrix   maps Test Case IDs (GS1 / DPP / ADM / BIL / SEC)
- * to automated assertions against current product behavior.
+ * OriginPass validation matrix - maps Test Case IDs
+ * (PDF / SCR / GS1 / DPP / ADM / BIL / SEC) to automated assertions.
  *
  * Cases that require a live Shopify Admin session or mobile scan hardware are
  * marked with `it.todo` / documented gaps so CI still reports coverage status.
@@ -16,9 +16,13 @@ import {
 } from "@/lib/gs1"
 import {
   GS1_INVALID_STRUCTURE_MESSAGE,
+  GS1_NOT_FOUND_MESSAGE,
   isMalformedGtinIdentifier,
+  publicPassportTargetPath,
   wantsGs1MachinePayload,
 } from "@/lib/gs1-http"
+import { calculateComplianceScore } from "@/lib/compliance-score"
+import { LAYOUT_PAGE_SIZE } from "@/components/pdf/PrintLayouts"
 import { PAID_PLANS, TIER_LIMITS, normalizeTier, tierForSubscriptionName } from "@/lib/shopify-billing"
 import { shopSubdomainFromDomain, buildShopifyPublicPassportUrl } from "@/lib/shopify-public-passport-url"
 
@@ -28,17 +32,148 @@ function readSrc(rel: string): string {
   return readFileSync(path.join(root, rel), "utf8")
 }
 
-describe("Scenario matrix   GS1 Digital Link (GS1-01 GS1-06)", () => {
-  it("GS1-01: standard GTIN URI parses AI 01 and builds Digital Link", () => {
+describe("Scenario matrix - PDF & Scorecard (PDF-01 PDF-04, SCR-01 SCR-02)", () => {
+  it("PDF-01: export-pdf hangtag route + filename contract exist", () => {
+    const route = readSrc("src/app/api/admin/passports/[id]/export-pdf/route.ts")
+    expect(route).toContain("application/pdf")
+    expect(route).toContain("Content-Disposition")
+    expect(route).toContain("hangtagPdfFilename")
+    expect(LAYOUT_PAGE_SIZE["hangtag-2x3"]).toEqual({
+      width: 144,
+      height: 216,
+      label: '2x3" Hangtag',
+    })
+    const apiTest = readSrc("src/app/api/admin/passports/export-pdf.test.ts")
+    expect(apiTest).toContain("PDF-01")
+  })
+
+  it("PDF-02: thermal and Avery page sizes match physical print media", () => {
+    expect(LAYOUT_PAGE_SIZE["thermal-4x6"]).toEqual({
+      width: 288,
+      height: 432,
+      label: '4x6" Thermal',
+    })
+    expect(LAYOUT_PAGE_SIZE["avery-5160"]).toEqual({
+      width: 612,
+      height: 792,
+      label: "Avery 5160 Sheet",
+    })
+    const layouts = readSrc("src/components/pdf/PrintLayouts.tsx")
+    expect(layouts).toContain("Thermal4x6")
+    expect(layouts).toContain("Avery5160Sheet")
+    expect(layouts).toContain("labelW: 2.625 * 72")
+    expect(layouts).toContain("labelH: 1 * 72")
+  })
+
+  it("PDF-03: variantGtin flows into export-pdf + GS1 QR helper", () => {
+    const route = readSrc("src/app/api/admin/passports/[id]/export-pdf/route.ts")
+    expect(route).toContain("variantGtin")
+    const pdfQr = readSrc("src/lib/pdf-qr.ts")
+    expect(pdfQr).toContain("buildGs1QrTargetUrl")
+    expect(pdfQr).toContain("generatePdfQrDataUri")
+    const apiTest = readSrc("src/app/api/admin/passports/export-pdf.test.ts")
+    expect(apiTest).toContain("PDF-03")
+    expect(apiTest).toContain("variantGtin")
+  })
+
+  it("PDF-04: Admin Export Print PDF modal is wired on Passport Detail QR tab", () => {
+    const modal = readSrc("src/components/admin/ExportPdfModal.tsx")
+    expect(modal).toContain("Export Print PDF")
+    expect(modal).toContain("Download PDF")
+    expect(modal).toContain("/api/admin/passports/")
+    const qrTab = readSrc("src/components/passports/PassportQRTab.tsx")
+    expect(qrTab).toContain("ExportPdfModal")
+    expect(qrTab).toContain("Export Print PDF")
+  })
+
+  it("SCR-01: scorecard recalculates when mandatory fields are toggled", () => {
+    const full = calculateComplianceScore({
+      productGtin: "00810012345675",
+      countryOfOrigin: "Vietnam",
+      materialComposition: "100% Cotton",
+      careInstructions: "Wash cold",
+      hasComplianceDocument: true,
+    })
+    expect(full.score).toBe(100)
+    expect(full.riskLabel).toBe("EU ESPR Export Ready")
+
+    const withoutOrigin = calculateComplianceScore({
+      productGtin: "00810012345675",
+      countryOfOrigin: "",
+      materialComposition: "100% Cotton",
+      careInstructions: "Wash cold",
+      hasComplianceDocument: true,
+    })
+    expect(withoutOrigin.score).toBe(80)
+    expect(withoutOrigin.riskLabel).toBe("Partial Compliance - Missing Fields")
+    expect(withoutOrigin.missingItems.some((m) => m.id === "origin")).toBe(true)
+
+    const editor = readSrc(
+      "src/app/(shopify-embedded)/api/shopify/products/[productId]/ProductPassportEditorPage.tsx",
+    )
+    expect(editor).toContain("calculateComplianceScore")
+    expect(editor).toContain("ComplianceScorecard")
+  })
+
+  it("SCR-02: scorecard checklist anchors map to editor section ids", () => {
+    const score = calculateComplianceScore({})
+    const anchors = score.missingItems.map((m) => m.anchor)
+    expect(anchors).toEqual(
+      expect.arrayContaining([
+        "#eu-score-gtin",
+        "#eu-score-origin",
+        "#eu-score-materials",
+        "#eu-score-care",
+        "#eu-score-docs",
+      ]),
+    )
+    const editor = readSrc(
+      "src/app/(shopify-embedded)/api/shopify/products/[productId]/ProductPassportEditorPage.tsx",
+    )
+    expect(editor).toContain('id="eu-score-materials"')
+    expect(editor).toContain('id="eu-score-origin"')
+    expect(editor).toContain("scroll-smooth")
+    const card = readSrc("src/components/admin/ComplianceScorecard.tsx")
+    expect(card).toContain("href={item.anchor}")
+  })
+})
+
+describe("Scenario matrix - GS1 Digital Link (GS1-01 GS1-06)", () => {
+  it("GS1-01: standard GTIN resolves to /sp/{shop}/{productId} with locale middleware exclusion", () => {
     const gtin = "5901234123457"
     expect(validateGTIN(gtin)).toBe(true)
     const parsed = parseGS1DigitalLinkPath(["01", gtin])
     expect(parsed?.gtin).toBe(gtin)
     const url = buildGS1DigitalLink("id.originpass.app", gtin)
     expect(url).toBe("https://id.originpass.app/01/05901234123457")
+
+    const target = publicPassportTargetPath({
+      productId: "550e8400-e29b-41d4-a716-446655440000",
+      externalProductId: "999",
+      externalVariantId: null,
+      shopDomain: "demo.myshopify.com",
+      shopSlug: "demo",
+      name: "Coat",
+      gtin,
+      gln: null,
+      defaultLotNumber: null,
+      materials: null,
+      originCountry: null,
+      productionLocation: null,
+      certificates: [],
+      passportToken: null,
+      matchedBy: "product_gtin",
+    })
+    expect(target).toBe("/sp/demo/999")
+
+    const route = readSrc("src/app/01/[...gs1Path]/route.ts")
+    expect(route).toMatch(/NextResponse\.redirect\(target,\s*307\)/)
+    const proxy = readSrc("src/proxy.ts")
+    expect(proxy).toContain('"/01/:path*"')
+    expect(proxy).toMatch(/sp\|shop\|01/)
   })
 
-  it("GS1-02: parses /01/{GTIN}/10/{BATCH}/21/{SERIAL} without errors", () => {
+  it("GS1-02: variant GTIN priority attaches ?variant={external_variant_id}", () => {
     const parts = parseGS1DigitalLinkPath([
       "01",
       "5901234123457",
@@ -52,6 +187,31 @@ describe("Scenario matrix   GS1 Digital Link (GS1-01 GS1-06)", () => {
       lot: "LOT-2026A",
       serial: "SN-7788",
     })
+
+    const resolve = readSrc("src/lib/gs1-passport-resolve.ts")
+    expect(resolve).toContain("variant_gtin")
+    expect(resolve).toContain("findByVariantGtin")
+    const http = readSrc("src/lib/gs1-http.ts")
+    expect(http).toContain("?variant=")
+    expect(
+      publicPassportTargetPath({
+        productId: "550e8400-e29b-41d4-a716-446655440000",
+        externalProductId: "999",
+        externalVariantId: "variant-A",
+        shopDomain: "demo.myshopify.com",
+        shopSlug: "demo",
+        name: "Coat",
+        gtin: "00123456789012",
+        gln: null,
+        defaultLotNumber: null,
+        materials: null,
+        originCountry: null,
+        productionLocation: null,
+        certificates: [],
+        passportToken: null,
+        matchedBy: "variant_gtin",
+      }),
+    ).toBe("/sp/demo/999?variant=variant-A")
   })
 
   it("GS1-03: Accept application/json|ld+json vs text/html negotiation helpers", () => {
@@ -61,20 +221,24 @@ describe("Scenario matrix   GS1 Digital Link (GS1-01 GS1-06)", () => {
     const route = readSrc("src/app/01/[...gs1Path]/route.ts")
     expect(route).toMatch(/NextResponse\.redirect\(target,\s*307\)/)
     expect(route).toMatch(/wantsGs1MachinePayload/)
-    const proxy = readSrc("src/proxy.ts")
-    expect(proxy).toMatch(/sp\|shop\|01/)
-    expect(proxy).toContain('"/01/:path*"')
   })
 
   it("GS1-04: malformed GTIN yields Invalid GS1 Identifier Structure signal", () => {
+    expect(isMalformedGtinIdentifier("123")).toBe(true)
     expect(isMalformedGtinIdentifier("1234567890")).toBe(true)
+    // Common fixture 00810012345678 fails Mod-10 - treated as malformed, not unassigned.
+    expect(validateGTIN("00810012345678")).toBe(false)
+    expect(isMalformedGtinIdentifier("00810012345678")).toBe(true)
     expect(GS1_INVALID_STRUCTURE_MESSAGE).toBe("Invalid GS1 Identifier Structure")
     const route = readSrc("src/app/01/[...gs1Path]/route.ts")
     expect(route).toMatch(/status:\s*400/)
     expect(route).toContain("GS1_INVALID_STRUCTURE_MESSAGE")
   })
 
-  it("GS1-05: unassigned path uses friendly not-found copy (no active passport)", () => {
+  it("GS1-05: unassigned valid GTIN uses friendly not-found copy (no active passport)", () => {
+    expect(validateGTIN("00810012345675")).toBe(true)
+    expect(isMalformedGtinIdentifier("00810012345675")).toBe(false)
+    expect(GS1_NOT_FOUND_MESSAGE).toBe("No active passport exists for this product identifier.")
     const http = readSrc("src/lib/gs1-http.ts")
     expect(http).toContain("No active passport exists for this product identifier.")
     const route = readSrc("src/app/01/[...gs1Path]/route.ts")
@@ -144,16 +308,22 @@ describe("Scenario matrix   DPP compliance (DPP-01 DPP-04)", () => {
   })
 })
 
-describe("Scenario matrix   Shopify admin (ADM-01 ADM-04)", () => {
-  it("ADM-01: OAuth auth route exists for install redirect", () => {
+describe("Scenario matrix - Shopify admin (ADM-01 ADM-04)", () => {
+  it("ADM-01: Product Catalog Sync lists titles, SKUs, images, and variants", () => {
+    const actions = readSrc("src/app/(shopify-embedded)/api/shopify/app-home/actions.ts")
+    expect(actions).toContain("listStoreProducts")
+    expect(actions).toMatch(/name,\s*sku/)
+    expect(actions).toContain("image_url")
+    expect(actions).toMatch(/variant|external_variant|variants/i)
     const auth = readSrc("src/app/(shopify-embedded)/api/shopify/auth/route.ts")
     expect(auth.length).toBeGreaterThan(100)
     expect(auth).toMatch(/shop|oauth|access|authorize/i)
-    const callback = readSrc("src/app/(shopify-embedded)/api/shopify/auth/callback/route.ts")
-    expect(callback).toMatch(/access_token|shop|callback/i)
   })
 
-  it("ADM-02: uninstall/reinstall compliance marks inactive without requiring hard delete", () => {
+  it("ADM-02: Compliance Document Storage uploads PDF evidence for passport fields", () => {
+    const certs = readSrc("src/app/(shopify-embedded)/api/shopify/certificates/route.ts")
+    expect(certs).toMatch(/upload|supplier-certificates|FormData|file/i)
+    expect(certs).toContain("getSubscriptionTier")
     const compliance = readSrc("src/lib/shopify-compliance.ts")
     expect(compliance).toContain('shopify_install_status: "uninstalled"')
     expect(compliance).toContain("shopify_access_token: null")
@@ -173,7 +343,7 @@ describe("Scenario matrix   Shopify admin (ADM-01 ADM-04)", () => {
   })
 })
 
-describe("Scenario matrix   Billing (BIL-01 BIL-04)", () => {
+describe("Scenario matrix - Billing (BIL-01 BIL-04)", () => {
   it("BIL-01: free tier enforces sync/product caps and upgrade copy ($29 / $79)", () => {
     expect(TIER_LIMITS.free.maxSyncedProducts).toBe(15)
     expect(TIER_LIMITS.free.evidenceUploads).toBe(false)
@@ -203,7 +373,7 @@ describe("Scenario matrix   Billing (BIL-01 BIL-04)", () => {
   })
 })
 
-describe("Scenario matrix   Security (SEC-01 SEC-03)", () => {
+describe("Scenario matrix - Security (SEC-01 SEC-03)", () => {
   it("SEC-01: embedded actions test suite enforces cross-shop isolation", () => {
     const actionsTest = readSrc("src/app/(shopify-embedded)/api/shopify/app-home/actions.test.ts")
     expect(actionsTest).toContain("store-a.myshopify.com")
@@ -211,10 +381,16 @@ describe("Scenario matrix   Security (SEC-01 SEC-03)", () => {
     expect(actionsTest).toMatch(/must never|never be able to read or write|shop A's data/i)
   })
 
-  it("SEC-02: session token verification is required for production shop actions", () => {
+  it("SEC-02: session required for /api/admin/* and production shop actions", () => {
     const actions = readSrc("src/app/(shopify-embedded)/api/shopify/app-home/actions.ts")
     expect(actions).toContain("verifyShopifySessionToken")
     expect(actions).toContain('process.env.NODE_ENV === "production"')
+    const exportPdf = readSrc("src/app/api/admin/passports/[id]/export-pdf/route.ts")
+    expect(exportPdf).toContain("Unauthorized")
+    expect(exportPdf).toContain("getUser")
+    const apiTest = readSrc("src/app/api/admin/passports/export-pdf.test.ts")
+    expect(apiTest).toContain("SEC-02")
+    expect(apiTest).toContain("401")
   })
 
   it("SEC-03: CSP frame-ancestors allow Shopify admin domains for embed", () => {
