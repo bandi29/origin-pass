@@ -6,6 +6,10 @@ import {
   getPost,
   getPostSlugs,
 } from "@/lib/blog"
+import {
+  blogPostCanonical as canonicalFromLinks,
+  blogPostOgImage as ogFromLinks,
+} from "@/lib/blog-links"
 
 describe("blog content", () => {
   it("lists the published guide slugs", () => {
@@ -35,6 +39,8 @@ describe("blog content", () => {
     expect(blogPostOgImage(slug)).toBe(
       "https://origin-pass.vercel.app/blog/gs1-digital-link-qr-code-clothing-hangtags/opengraph-image",
     )
+    expect(canonicalFromLinks(slug)).toBe(blogPostCanonical(slug))
+    expect(ogFromLinks(slug)).toBe(blogPostOgImage(slug))
   })
 
   it("rejects path traversal slugs", async () => {

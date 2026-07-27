@@ -1,6 +1,6 @@
 import NextLink from "next/link"
 import { BookOpen, ExternalLink } from "lucide-react"
-import { BLOG_GUIDE_LINKS, BLOG_PATHS, blogAbsolutePath } from "@/lib/blog"
+import { BLOG_GUIDE_LINKS, BLOG_PATHS, blogAbsolutePath } from "@/lib/blog-links"
 import { twMerge } from "tailwind-merge"
 
 type DocumentationGuidesCalloutProps = {

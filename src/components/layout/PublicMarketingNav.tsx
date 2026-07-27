@@ -1,6 +1,6 @@
 import NextLink from "next/link"
 import { Link } from "@/i18n/navigation"
-import { BLOG_PATHS } from "@/lib/blog"
+import { BLOG_PATHS } from "@/lib/blog-links"
 
 /**
  * Marketing links shown on the public site header.

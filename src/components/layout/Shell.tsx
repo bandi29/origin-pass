@@ -7,7 +7,7 @@ import { Container } from "@/components/ui/Container"
 import HeaderAuthStatus from "@/components/layout/HeaderAuthStatus"
 import MainNav from "@/components/layout/MainNav"
 import { PublicMarketingNav } from "@/components/layout/PublicMarketingNav"
-import { BLOG_GUIDE_LINKS, BLOG_PATHS } from "@/lib/blog"
+import { BLOG_GUIDE_LINKS, BLOG_PATHS } from "@/lib/blog-links"
 
 type LayoutVariant = "narrow" | "wide"
 

@@ -5,10 +5,18 @@ import { remark } from "remark"
 import html from "remark-html"
 import remarkGfm from "remark-gfm"
 
-const postsDirectory = path.join(process.cwd(), "src/content/blog")
+export {
+  BLOG_SITE_URL,
+  BLOG_PATHS,
+  BLOG_GUIDE_LINKS,
+  blogAbsolutePath,
+  blogIndexCanonical,
+  blogIndexOgImage,
+  blogPostCanonical,
+  blogPostOgImage,
+} from "@/lib/blog-links"
 
-export const BLOG_SITE_URL =
-  (process.env.NEXT_PUBLIC_BASE_URL ?? "https://origin-pass.vercel.app").replace(/\/$/, "")
+const postsDirectory = path.join(process.cwd(), "src/content/blog")
 
 export type BlogPostMeta = {
   slug: string
@@ -58,48 +66,3 @@ export async function getAllPosts(): Promise<BlogPost[]> {
   const posts = await Promise.all(getPostSlugs().map(getPost))
   return posts.sort((a, b) => b.date.localeCompare(a.date))
 }
-
-export function blogPostCanonical(slug: string): string {
-  return `${BLOG_SITE_URL}/blog/${slug}`
-}
-
-export function blogIndexCanonical(): string {
-  return `${BLOG_SITE_URL}/blog`
-}
-
-/** Absolute Open Graph image URL for a post (file convention + explicit meta). */
-export function blogPostOgImage(slug: string): string {
-  return `${BLOG_SITE_URL}/blog/${slug}/opengraph-image`
-}
-
-export function blogIndexOgImage(): string {
-  return `${BLOG_SITE_URL}/blog/opengraph-image`
-}
-
-/** Public guide routes (unprefixed; keep outside next-intl Link). */
-export const BLOG_PATHS = {
-  home: "/blog",
-  espr: "/blog/eu-espr-compliance-shopify-apparel-brands",
-  gs1: "/blog/gs1-digital-link-qr-code-clothing-hangtags",
-} as const
-
-export const BLOG_GUIDE_LINKS = [
-  {
-    key: "espr",
-    label: "EU ESPR Compliance Guide",
-    href: BLOG_PATHS.espr,
-    shortLabel: "EU ESPR guide",
-  },
-  {
-    key: "gs1",
-    label: "GS1 QR Hangtag Tutorial",
-    href: BLOG_PATHS.gs1,
-    shortLabel: "GS1 QR hangtags",
-  },
-] as const
-
-export function blogAbsolutePath(path: string): string {
-  const normalized = path.startsWith("/") ? path : `/${path}`
-  return `${BLOG_SITE_URL}${normalized}`
-}
-
