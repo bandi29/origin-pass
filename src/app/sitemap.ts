@@ -14,6 +14,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BLOG_SITE_URL}/pricing`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BLOG_SITE_URL}/compliance`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BLOG_SITE_URL}/blog`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    // Lead-magnet landing page — targets "EU DPP checklist" / "ESPR compliance checklist".
+    { url: `${BLOG_SITE_URL}/dpp-checklist`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
   ]
 
   const blogRoutes: MetadataRoute.Sitemap = posts.map((post) => ({

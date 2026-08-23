@@ -115,7 +115,9 @@ export const config = {
     "/shop/:path*",
     "/01/:path*",
     "/(fr|en|it)/:path*",
-    // Exclude GS1 Digital Link `/01/*` and SEO `/blog/*` from locale middleware.
-    "/((?!_next|_vercel|api|p|s|sp|01|blog|scan|auth|passports|scans|verifications|analytics|shop|.*\\..*).*)",
+    // Exclude GS1 Digital Link `/01/*` and the English SEO pages (`/blog/*`,
+    // `/dpp-checklist`) from locale middleware — they live outside [locale] so
+    // their canonical URLs must not be rewritten to `/en/...`.
+    "/((?!_next|_vercel|api|p|s|sp|01|blog|dpp-checklist|scan|auth|passports|scans|verifications|analytics|shop|.*\\..*).*)",
   ],
 }
