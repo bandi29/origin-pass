@@ -261,14 +261,31 @@ const CatalogProductRow = memo(function CatalogProductRow({
 /**
  * Embedded admin home — single-screen store configuration + label printing.
  * Renders inside the Shopify admin iframe (App Bridge).
+ *
+ * `initialConnected` comes from the server parent so a linked store paints the
+ * real UI on first HTML (not an indefinite "Connecting…" shell) even before
+ * client hydration finishes the connection-status round-trip.
  */
-export default function ShopifyAppHomePage() {
+export default function ShopifyAppHomePage({
+  initialConnected = false,
+}: {
+  initialConnected?: boolean
+}) {
   const searchParams = useSearchParams()
   const shop = searchParams.get("shop") ?? ""
   const host = searchParams.get("host") ?? ""
   /** Recording/storyboard only: pretend catalog is empty until the first Sync in this session. */
   const storyboardFresh = searchParams.get("storyboard") === "fresh"
   const [freshUnlocked, setFreshUnlocked] = useState(!storyboardFresh)
+  const [tunnelPreview, setTunnelPreview] = useState(false)
+
+  useEffect(() => {
+    try {
+      setTunnelPreview(/\.(trycloudflare\.com|cloudflare\.com)$/i.test(window.location.hostname))
+    } catch {
+      setTunnelPreview(false)
+    }
+  }, [])
 
   const connectUrl = useMemo(() => {
     if (!shop) return ""
@@ -293,7 +310,7 @@ export default function ShopifyAppHomePage() {
 
   const [saveState, setSaveState] = useState<StoreConfigState>(emptySaveState)
   const [saving, setSaving] = useState(false)
-  const [connected, setConnected] = useState(false)
+  const [connected, setConnected] = useState(initialConnected)
   const [location, setLocation] = useState("")
   const [instructions, setInstructions] = useState("")
   // Last-saved snapshot — powers real dirty detection + Discard.
@@ -302,7 +319,7 @@ export default function ShopifyAppHomePage() {
   const [products, setProducts] = useState<PrintableProduct[]>([])
   const [productsLoaded, setProductsLoaded] = useState(false)
   const [configLoaded, setConfigLoaded] = useState(false)
-  const [connectionLoaded, setConnectionLoaded] = useState(false)
+  const [connectionLoaded, setConnectionLoaded] = useState(initialConnected)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showSheet, setShowSheet] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -902,6 +919,18 @@ export default function ShopifyAppHomePage() {
   return (
     <>
       <ShopifyAppTitleBar />
+      {tunnelPreview ? (
+        <div
+          id="dev-tunnel-banner"
+          className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          Local Dev Console preview (Cloudflare tunnel). If this goes blank after stopping{" "}
+          <code className="rounded bg-amber-100 px-1">npm run shopify:dev</code>, leave Dev Console and open{" "}
+          <strong>Apps → OriginPass</strong> so Admin loads production (
+          <code className="rounded bg-amber-100 px-1">origin-pass.vercel.app</code>).
+        </div>
+      ) : null}
       {/* Local-dev aid only — NODE_ENV is inlined at build time, so this whole
           branch is dead-code-eliminated from the production bundle. */}
       {process.env.NODE_ENV !== "production" && !host && shop ? (

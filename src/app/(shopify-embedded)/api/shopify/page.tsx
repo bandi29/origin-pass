@@ -1,4 +1,6 @@
 import { Suspense } from "react"
+import { createServerSupabaseClient } from "@/lib/supabase"
+import { isValidShopDomain } from "@/lib/shopify"
 import ShopifyAppHomePage from "./app-home/page"
 
 function ShopifyPageFallback() {
@@ -17,10 +19,38 @@ function ShopifyPageFallback() {
   )
 }
 
-export default function ShopifyEmbeddedPage() {
+async function resolveInitialConnected(shop: string | undefined): Promise<boolean> {
+  const domain = (shop ?? "").trim()
+  if (!isValidShopDomain(domain)) return false
+  try {
+    const supabase = createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from("organizations")
+      .select("shopify_access_token")
+      .eq("shop_domain", domain)
+      .maybeSingle()
+    if (error) return false
+    return Boolean(
+      (data as { shopify_access_token?: string | null } | null)?.shopify_access_token,
+    )
+  } catch {
+    return false
+  }
+}
+
+export default async function ShopifyEmbeddedPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const shopRaw = params.shop
+  const shop = typeof shopRaw === "string" ? shopRaw : Array.isArray(shopRaw) ? shopRaw[0] : undefined
+  const initialConnected = await resolveInitialConnected(shop)
+
   return (
     <Suspense fallback={<ShopifyPageFallback />}>
-      <ShopifyAppHomePage />
+      <ShopifyAppHomePage initialConnected={initialConnected} />
     </Suspense>
   )
 }

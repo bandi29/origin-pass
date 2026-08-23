@@ -29,7 +29,7 @@ console.log(`[shopify-dev] Starting shopify app dev for ${store}`)
 if (useLocalhost) {
   console.log("[shopify-dev] Localhost mode (no tunnel). Webhooks will not reach this machine.")
 } else {
-  console.log("[shopify-dev] Cloudflare tunnel mode. Keep this terminal open — closing it breaks the admin iframe.")
+  console.log("[shopify-dev] Cloudflare tunnel mode. Keep this terminal open while using Preview/Dev Console.")
 }
 console.log("[shopify-dev] Open the Preview URL from the CLI, then click Web in Dev Console.")
 console.log("[shopify-dev] After start, run: npm run shopify:embed:check")
@@ -40,8 +40,12 @@ console.log(
 console.log(
   "[shopify-dev] If you see redirect_uri is not whitelisted, you are on a tunnel callback — restart Next after pulling latest, or set SHOPIFY_ALLOW_TUNNEL_OAUTH=1 only after Partners lists that tunnel.",
 )
-console.log("[shopify-dev] originpass.com is NOT deployed yet — sidebar alone will stay blank without this dev server.")
-
+console.log(
+  "[shopify-dev] Partner application_url stays on https://origin-pass.vercel.app (tunnel auto-update is OFF).",
+)
+console.log(
+  "[shopify-dev] Apps → OriginPass (no Dev Console) loads PRODUCTION. Use the CLI Preview URL for local work.",
+)
 const child = spawn("npx", args, {
   stdio: "inherit",
   shell: true,

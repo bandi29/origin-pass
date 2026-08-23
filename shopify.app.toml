@@ -9,7 +9,10 @@ application_url = "https://origin-pass.vercel.app"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = true
+# Keep Partner application_url on Vercel. Auto-updating to the Cloudflare
+# tunnel during `shopify app dev` left the Admin sidebar blank whenever the
+# tunnel died. Local preview still works via CLI Preview URL + Dev Console.
+automatically_update_urls_on_dev = false
 
 [webhooks]
 api_version = "2024-10"

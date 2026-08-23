@@ -157,13 +157,23 @@ export async function exchangeCodeForTokenGrant(shop: string, code: string): Pro
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ client_id: apiKey, client_secret: apiSecret, code, expiring: 1 }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      console.error(
+        `[shopify] token exchange failed for ${shop}: HTTP ${res.status}${body ? ` — ${body.slice(0, 240)}` : ""}`,
+      )
+      return null
+    }
     const grant = parseTokenGrant((await res.json()) as Parameters<typeof parseTokenGrant>[0])
     if (grant && !grant.expiresAt) {
       console.warn(`[shopify] token exchange for ${shop} returned a NON-expiring grant (no expires_in) — Admin API will reject it`)
     }
     return grant
-  } catch {
+  } catch (error) {
+    console.error(
+      `[shopify] token exchange network error for ${shop}:`,
+      error instanceof Error ? error.message : error,
+    )
     return null
   }
 }

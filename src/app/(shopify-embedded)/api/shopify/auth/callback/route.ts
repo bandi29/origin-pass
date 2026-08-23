@@ -57,7 +57,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // API rejects legacy non-expiring tokens).
   const grant = await exchangeCodeForTokenGrant(shop, code)
   if (!grant) {
-    return NextResponse.json({ error: "Token exchange failed." }, { status: 502 })
+    // Usually a reused one-time `code` (merchant refreshed the callback tab) or
+    // a client_secret mismatch — never leave them on raw JSON in the browser.
+    console.error("[shopify/auth/callback] token exchange failed for", shop)
+    return oauthFailureRedirect(shop, host, "token_exchange_failed")
   }
 
   const tokenFields = {
@@ -87,7 +90,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .eq("shop_domain", shop)
     if (error) {
       console.error("[shopify/auth/callback] store update failed:", error.message)
-      return NextResponse.json({ error: "Could not persist store." }, { status: 500 })
+      return oauthFailureRedirect(shop, host, "persist_failed")
     }
   } else {
     const { error } = await supabase.from("organizations").insert({
@@ -100,7 +103,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     })
     if (error) {
       console.error("[shopify/auth/callback] store insert failed:", error.message)
-      return NextResponse.json({ error: "Could not persist store." }, { status: 500 })
+      return oauthFailureRedirect(shop, host, "persist_failed")
     }
   }
 

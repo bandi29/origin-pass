@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { getShopifyAdminToken } from "@/lib/shopify-admin-token"
 import { isValidShopDomain, verifyShopifySessionToken } from "@/lib/shopify"
 
 export const runtime = "nodejs"
@@ -8,10 +8,9 @@ export const dynamic = "force-dynamic"
 /**
  * GET /api/shopify/connection-status?shop=...
  *
- * Lightweight offline-token presence check for the embedded home gate.
- * Prefer this over the isStoreConnected Server Action when the app is loaded
- * through a Cloudflare quick tunnel -- Server Actions can fail CSRF/origin checks
- * and leave the UI stuck on "Connecting..." / OAuth-looping even when a grant exists.
+ * Validates a usable Admin API token (refreshing when near expiry). A stale row
+ * with an expired/revoked grant must report connected:false so the embed can
+ * start a fresh OAuth instead of looking "linked" while every Admin call fails.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const shopParam = (request.nextUrl.searchParams.get("shop") ?? "").trim()
@@ -25,22 +24,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const supabase = createServerSupabaseClient()
-    const { data, error } = await supabase
-      .from("organizations")
-      .select("shopify_access_token")
-      .eq("shop_domain", shop)
-      .maybeSingle()
-
-    if (error) {
-      return NextResponse.json({ ok: false, connected: false, message: "Lookup failed." }, { status: 500 })
-    }
-
-    const connected = Boolean(
-      (data as { shopify_access_token?: string | null } | null)?.shopify_access_token,
-    )
-    return NextResponse.json({ ok: true, connected, shop })
-  } catch {
+    const token = await getShopifyAdminToken(shop)
+    return NextResponse.json({ ok: true, connected: Boolean(token), shop })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Lookup failed."
+    console.error("[shopify/connection-status] failed:", message)
     return NextResponse.json({ ok: false, connected: false, message: "Lookup failed." }, { status: 500 })
   }
 }
