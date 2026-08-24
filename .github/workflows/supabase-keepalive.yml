@@ -1,15 +1,15 @@
 # Keep Free-tier Supabase projects from auto-pausing after ~7 days of inactivity.
 # Docs: https://supabase.com/docs/guides/platform/free-project-pausing
 #
-# Required GitHub repo secrets (Production / originpass):
-#   SUPABASE_URL
-#   SUPABASE_SERVICE_ROLE_KEY
+# Required GitHub repo secrets:
+#   SUPABASE_PROJECT_REF          (already used by migrate → myempzxqncdmobnvgbur)
+#   SUPABASE_SERVICE_ROLE_KEY     (production service role — add if missing)
 #
 # Optional (also keep originpass-dev warm):
-#   SUPABASE_DEV_URL
+#   SUPABASE_DEV_PROJECT_REF      (jmecvwpgfprmlvteiwkh)
 #   SUPABASE_DEV_SERVICE_ROLE_KEY
 #
-# When you upgrade to Pro, delete this workflow — paid projects are never paused for inactivity.
+# When you upgrade to Pro, delete this workflow — paid projects never pause for inactivity.
 
 name: Supabase keep-alive
 
@@ -31,16 +31,16 @@ jobs:
     steps:
       - name: Ping production (originpass)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-            echo "::error::Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY repo secrets."
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error::Missing SUPABASE_PROJECT_REF or SUPABASE_SERVICE_ROLE_KEY repo secrets."
             exit 1
           fi
-          code=$(curl -sS -o /tmp/keepalive-prod.json -w "%{http_code}" \
-            "${SUPABASE_URL%/}/rest/v1/organizations?select=id&limit=1" \
+          url="https://${SUPABASE_PROJECT_REF}.supabase.co/rest/v1/organizations?select=id&limit=1"
+          code=$(curl -sS -o /tmp/keepalive-prod.json -w "%{http_code}" "$url" \
             -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             -H "Accept: application/json")
@@ -53,16 +53,16 @@ jobs:
 
       - name: Ping development (originpass-dev, optional)
         env:
-          SUPABASE_DEV_URL: ${{ secrets.SUPABASE_DEV_URL }}
+          SUPABASE_DEV_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
           SUPABASE_DEV_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_DEV_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${SUPABASE_DEV_URL:-}" ] || [ -z "${SUPABASE_DEV_SERVICE_ROLE_KEY:-}" ]; then
+          if [ -z "${SUPABASE_DEV_PROJECT_REF:-}" ] || [ -z "${SUPABASE_DEV_SERVICE_ROLE_KEY:-}" ]; then
             echo "Skipping originpass-dev (optional secrets not set)."
             exit 0
           fi
-          code=$(curl -sS -o /tmp/keepalive-dev.json -w "%{http_code}" \
-            "${SUPABASE_DEV_URL%/}/rest/v1/organizations?select=id&limit=1" \
+          url="https://${SUPABASE_DEV_PROJECT_REF}.supabase.co/rest/v1/organizations?select=id&limit=1"
+          code=$(curl -sS -o /tmp/keepalive-dev.json -w "%{http_code}" "$url" \
             -H "apikey: ${SUPABASE_DEV_SERVICE_ROLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_DEV_SERVICE_ROLE_KEY}" \
             -H "Accept: application/json")
