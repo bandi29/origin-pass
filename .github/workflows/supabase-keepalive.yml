@@ -1,0 +1,74 @@
+# Keep Free-tier Supabase projects from auto-pausing after ~7 days of inactivity.
+# Docs: https://supabase.com/docs/guides/platform/free-project-pausing
+#
+# Required GitHub repo secrets (Production / originpass):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#
+# Optional (also keep originpass-dev warm):
+#   SUPABASE_DEV_URL
+#   SUPABASE_DEV_SERVICE_ROLE_KEY
+#
+# When you upgrade to Pro, delete this workflow — paid projects are never paused for inactivity.
+
+name: Supabase keep-alive
+
+on:
+  schedule:
+    # Every 3 days at 08:00 UTC — well inside the 7-day free-tier pause window.
+    - cron: "0 8 */3 * *"
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Ping Free-tier projects
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping production (originpass)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error::Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY repo secrets."
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/keepalive-prod.json -w "%{http_code}" \
+            "${SUPABASE_URL%/}/rest/v1/organizations?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Accept: application/json")
+          echo "production HTTP ${code}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Production keep-alive failed"
+            cat /tmp/keepalive-prod.json || true
+            exit 1
+          fi
+
+      - name: Ping development (originpass-dev, optional)
+        env:
+          SUPABASE_DEV_URL: ${{ secrets.SUPABASE_DEV_URL }}
+          SUPABASE_DEV_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_DEV_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DEV_URL:-}" ] || [ -z "${SUPABASE_DEV_SERVICE_ROLE_KEY:-}" ]; then
+            echo "Skipping originpass-dev (optional secrets not set)."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/keepalive-dev.json -w "%{http_code}" \
+            "${SUPABASE_DEV_URL%/}/rest/v1/organizations?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_DEV_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_DEV_SERVICE_ROLE_KEY}" \
+            -H "Accept: application/json")
+          echo "development HTTP ${code}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Development keep-alive failed"
+            cat /tmp/keepalive-dev.json || true
+            exit 1
+          fi
