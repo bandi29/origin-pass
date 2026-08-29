@@ -9,6 +9,7 @@ import {
   queuePassportImportBatch,
 } from "@/lib/passport-batch-import-server"
 import type { PassportImportRow } from "@/lib/passport-batch-import-types"
+import { PLAN_LIMITS, getSubscriptionTierForOrgId } from "@/lib/shopify-billing"
 
 export type QueuePassportBatchImportResult =
   | {
@@ -18,7 +19,7 @@ export type QueuePassportBatchImportResult =
       recordCount: number
       jobName: string | null
     }
-  | { success: false; error: string }
+  | { success: false; error: string; code?: string }
 
 export async function queuePassportBatchImportAction(input: {
   items: PassportImportRow[]
@@ -58,6 +59,16 @@ export async function queuePassportBatchImportAction(input: {
     .eq("id", user.id)
     .maybeSingle()
   const organizationId = (userRow?.organization_id as string | null | undefined) ?? null
+
+  const plan = await getSubscriptionTierForOrgId(organizationId)
+  if (!PLAN_LIMITS[plan].allowBulkCsv) {
+    return {
+      success: false,
+      code: "PLAN_BULK_CSV_LOCKED",
+      error:
+        "Bulk CSV import/export is available on the Scale plan ($79/mo). Upgrade to unlock this utility.",
+    }
+  }
 
   const manifestBatchId = items[0]?.batch_id?.trim() || `BATCH-${Date.now()}`
   const records = preparePassportImportRecords(items, manifestBatchId)
