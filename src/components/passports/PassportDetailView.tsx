@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   Pencil,
   ExternalLink,
+  Printer,
 } from "lucide-react"
 import { Link } from "@/i18n/navigation"
 import { PageHeader } from "@/components/layout/PageHeader"
@@ -26,6 +27,8 @@ import type {
   PassportVerificationComplianceStatus,
   PassportVerificationHistoryEntry,
 } from "@/lib/passport-verification-management"
+import type { EsprComplianceResult } from "@/lib/complianceScore"
+import { ExportPdfModal } from "@/components/admin/ExportPdfModal"
 
 type TabId = "content" | "overview" | "qr" | "scans" | "verification" | "settings"
 
@@ -70,6 +73,7 @@ type PassportDetailViewProps = {
   verificationComplianceStatus: PassportVerificationComplianceStatus
   verificationHistory: PassportVerificationHistoryEntry[]
   mode?: "view" | "edit"
+  esprScore?: EsprComplianceResult | null
 }
 
 export function PassportDetailView({
@@ -81,6 +85,7 @@ export function PassportDetailView({
   verificationComplianceStatus,
   verificationHistory,
   mode = "view",
+  esprScore = null,
 }: PassportDetailViewProps) {
   const tabs = mode === "edit" ? EDIT_TABS : MONITORING_TABS
   const [activeTab, setActiveTab] = useState<TabId>(
@@ -88,6 +93,7 @@ export function PassportDetailView({
   )
   const [currentStatus, setCurrentStatus] = useState(passport.status)
   const [lifecycleAction, setLifecycleAction] = useState<PassportLifecycleAction | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
 
   // Surface the serial in the global breadcrumb (the URL only carries the UUID).
   useRegisterBreadcrumbLabel(passport.id, passport.serialNumber)
@@ -111,6 +117,14 @@ export function PassportDetailView({
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              <Printer className="h-4 w-4" aria-hidden />
+              Print &amp; Export QR
+            </button>
             <a
               href={verifyHref}
               target="_blank"
@@ -163,7 +177,7 @@ export function PassportDetailView({
           <PassportContentTab passportId={passport.id} initialContent={content} />
         )}
         {activeTab === "overview" && (
-          <PassportOverviewTab passport={passportWithStatus} />
+          <PassportOverviewTab passport={passportWithStatus} esprScore={esprScore} />
         )}
         {activeTab === "qr" && (
           <PassportQRTab
@@ -193,6 +207,13 @@ export function PassportDetailView({
           />
         )}
       </div>
+
+      <ExportPdfModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        passportId={passport.id}
+        serialNumber={passport.serialNumber}
+      />
     </div>
   )
 }

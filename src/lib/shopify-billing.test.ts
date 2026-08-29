@@ -118,7 +118,7 @@ describe("switchPaidPlan", () => {
     const result = await switchPaidPlan({
       shop: "demo.myshopify.com",
       adminToken: "shpat_test",
-      plan: "enterprise",
+      plan: "scale-plan",
       returnUrl: "https://admin.shopify.com/store/demo/apps/originpass",
       currentSubscriptionId: "gid://shopify/AppSubscription/1",
     })
@@ -146,7 +146,7 @@ describe("switchPaidPlan", () => {
     const result = await switchPaidPlan({
       shop: "demo.myshopify.com",
       adminToken: "shpat_test",
-      plan: "grower",
+      plan: "pro-plan",
       returnUrl: "https://example.com/return",
       currentSubscriptionId: "gid://shopify/AppSubscription/1",
     })

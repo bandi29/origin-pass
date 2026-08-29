@@ -4,6 +4,7 @@ import { qrcodeBodySchema } from "@/lib/passport-wizard-schemas"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { ensureBrandProfile } from "@/lib/tenancy"
+import { schedulePassportStorefrontSync } from "@/lib/shopify-dpp-storefront-sync"
 
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
         qrIdentityDisplayName: productRow?.name?.trim() || null,
         qrIdentityMetadata: wizardMetadata,
       })
+      schedulePassportStorefrontSync(passportId)
       return Response.json({
         publicPageUrl: result.publicPageUrl,
         imageDataUrl: result.imageDataUrl,
@@ -81,6 +83,8 @@ export async function POST(req: Request) {
       qrIdentityDisplayName: productRow?.name?.trim() || null,
       qrIdentityMetadata: wizardMetadata,
     })
+
+    schedulePassportStorefrontSync(passportId)
 
     return Response.json({
       publicPageUrl: batch.primary.publicPageUrl,

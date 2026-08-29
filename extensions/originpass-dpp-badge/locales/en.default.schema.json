@@ -1,0 +1,36 @@
+{
+  "name": "OriginPass DPP Badge",
+  "settings": {
+    "heading_style": "Badge appearance",
+    "badge_style": "Badge style",
+    "badge_style_options": {
+      "pill": "Pill button",
+      "link": "Minimal link",
+      "card": "Full transparency card"
+    },
+    "button_text": "Button text",
+    "heading_colors": "Colors",
+    "color_mode": "Color mode",
+    "color_mode_options": {
+      "inherit": "Inherit theme colors",
+      "custom": "Custom accent"
+    },
+    "accent_color": "Accent color",
+    "text_color": "Text color",
+    "heading_behavior": "Click behavior",
+    "click_behavior": "On click",
+    "click_behavior_options": {
+      "modal": "Open modal on this page",
+      "link": "Open passport URL"
+    },
+    "link_target": "Link target",
+    "link_target_options": {
+      "_self": "Same tab",
+      "_blank": "New tab"
+    },
+    "heading_visibility": "Visibility",
+    "require_linked": "Only show when a passport metafield/metaobject is linked",
+    "passport_base_url": "OriginPass base URL",
+    "passport_base_url_info": "Used to build /sp/{shop}/{productId} when no metafield URL is set."
+  }
+}

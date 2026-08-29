@@ -14,6 +14,7 @@ export const PASSPORT_TEMPLATE_PREVIEW_MOCK: PassportThemeProps = {
     story: null,
     materials: null,
     origin: "Tuscany, Italy",
+    lifecycle: "Condition leather twice a year; repairable hardware",
     image_url: null,
     brand_id: null,
     metadata: null,

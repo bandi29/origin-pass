@@ -14,8 +14,9 @@ import { EvidenceUpgradeBanner } from "./EvidenceUpgradeBanner"
 import { MerchantCatalogEmptyState } from "./MerchantCatalogEmptyState"
 import { PlanManagementCard } from "./PlanManagementCard"
 import { ProductEvidenceIndicators } from "./ProductEvidenceIndicators"
+import { UpgradeToProModal } from "./UpgradeToProModal"
 import { shouldShowMerchantEmptyState } from "./merchant-empty-state"
-import type { PaidPlan } from "@/lib/shopify-billing"
+import { PLAN_LIMITS, type PaidPlan, type SubscriptionTier } from "@/lib/shopify-billing"
 import {
   computeBrandDefaultCoverage,
   computeComplianceHealth,
@@ -337,7 +338,10 @@ export default function ShopifyAppHomePage({
   const [loadingMore, setLoadingMore] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   // Billing tier — gates evidence uploads in the UI (server enforces too).
-  const [subscriptionTier, setSubscriptionTier] = useState<"free" | "grower" | "enterprise">("free")
+  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free")
+  const [passportCount, setPassportCount] = useState(0)
+  const [maxPassports, setMaxPassports] = useState<number | null>(PLAN_LIMITS.free.maxPassports)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
   const [billingBusy, setBillingBusy] = useState(false)
   // Every product ever loaded this session, by id — selections keep printing even
@@ -511,6 +515,8 @@ export default function ShopifyAppHomePage({
         setSavedInstructions(data.careInstructions)
         setLastSyncedAt(data.lastSyncedAt)
         setSubscriptionTier(data.subscriptionTier)
+        setPassportCount(data.passportCount)
+        setMaxPassports(data.maxPassports)
       })
       .finally(() => {
         if (active) setConfigLoaded(true)
@@ -666,6 +672,8 @@ export default function ShopifyAppHomePage({
     const token = await getSessionToken()
     const data = await getStoreConfig(shop, token)
     setSubscriptionTier(data.subscriptionTier)
+    setPassportCount(data.passportCount)
+    setMaxPassports(data.maxPassports)
     return data.subscriptionTier
   }, [shop])
 
@@ -834,10 +842,17 @@ export default function ShopifyAppHomePage({
         setSyncPercent(started.ok ? 100 : 0)
         setSyncStatusMessage(started.message)
         setSyncMessage({ ok: started.ok, text: started.message })
+        if (
+          !started.ok &&
+          /Upgrade to Pro|passport limit|Starter Free limit/i.test(started.message)
+        ) {
+          setShowUpgradeModal(true)
+        }
         if (started.ok || started.capped) {
           setLastSyncedAt(new Date().toISOString())
           setFreshUnlocked(true)
           await loadProducts() // capped runs still committed partial data
+          await refreshSubscriptionTier()
         }
         return
       }
@@ -1020,6 +1035,22 @@ export default function ShopifyAppHomePage({
           onUpgrade={(plan) => void handleUpgrade(plan)}
         />
 
+        {maxPassports != null ? (
+          <p className="text-xs text-[#6d7175]">
+            Passports used:{" "}
+            <span className="font-semibold text-[#202223]">
+              {passportCount} / {maxPassports}
+            </span>
+            {subscriptionTier === "free" && passportCount >= maxPassports
+              ? " — Create Passport is locked until you upgrade."
+              : null}
+          </p>
+        ) : (
+          <p className="text-xs text-[#6d7175]">
+            Passports used: <span className="font-semibold text-[#202223]">{passportCount}</span> (unlimited)
+          </p>
+        )}
+
         {initialDataLoaded && uiProducts.length === 0 && !showMerchantEmptyState ? (
           <section
             aria-labelledby="setup-sync-heading"
@@ -1091,7 +1122,7 @@ export default function ShopifyAppHomePage({
               {location.length}/{PRODUCTION_MAX} · Inherited by products that have not set their own origin.
             </p>
             {subscriptionTier === "free" ? (
-              <EvidenceUpgradeBanner upgrading={upgrading} onUpgrade={() => void handleUpgrade("grower")} />
+              <EvidenceUpgradeBanner upgrading={upgrading} onUpgrade={() => void handleUpgrade("pro-plan")} />
             ) : (
               <CertificateField shop={shop} field="location" brandDefaultContext onCertChange={() => void loadProducts()} />
             )}
@@ -1115,7 +1146,7 @@ export default function ShopifyAppHomePage({
               {instructions.length}/{CARE_MAX} · Inherited by products that have not set their own care guidance.
             </p>
             {subscriptionTier === "free" ? (
-              <EvidenceUpgradeBanner upgrading={upgrading} onUpgrade={() => void handleUpgrade("grower")} />
+              <EvidenceUpgradeBanner upgrading={upgrading} onUpgrade={() => void handleUpgrade("pro-plan")} />
             ) : (
               <CertificateField shop={shop} field="care" brandDefaultContext onCertChange={() => void loadProducts()} />
             )}
@@ -1151,23 +1182,43 @@ export default function ShopifyAppHomePage({
                   role="group"
                   aria-label="Print preview format"
                 >
-                  {LABEL_FORMAT_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setLabelFormat(option.value)}
-                      aria-pressed={labelFormat === option.value}
-                      className={[
-                        "rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
-                        focusRingClass,
-                        labelFormat === option.value
-                          ? "bg-white text-[#202223] shadow-[0_1px_0_rgba(0,0,0,0.05)] ring-1 ring-[#e3e3e3]"
-                          : "text-[#6d7175] hover:text-[#202223]",
-                      ].join(" ")}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                  {LABEL_FORMAT_OPTIONS.map((option) => {
+                    const locked =
+                      !PLAN_LIMITS[subscriptionTier].allowLabelExports &&
+                      (option.value === "avery5160" || option.value === "thermal")
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={locked}
+                        title={
+                          locked
+                            ? "Avery / Thermal label exports unlock on Pro ($29/mo)"
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (locked) {
+                            setShowUpgradeModal(true)
+                            return
+                          }
+                          setLabelFormat(option.value)
+                        }}
+                        aria-pressed={labelFormat === option.value}
+                        className={[
+                          "rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all",
+                          focusRingClass,
+                          locked
+                            ? "cursor-not-allowed text-[#b5b5b5]"
+                            : labelFormat === option.value
+                              ? "bg-white text-[#202223] shadow-[0_1px_0_rgba(0,0,0,0.05)] ring-1 ring-[#e3e3e3]"
+                              : "text-[#6d7175] hover:text-[#202223]",
+                        ].join(" ")}
+                      >
+                        {option.label}
+                        {locked ? " (Pro)" : ""}
+                      </button>
+                    )
+                  })}
                 </div>
               ) : null}
             </div>
@@ -1530,6 +1581,17 @@ export default function ShopifyAppHomePage({
       {showSheet ? (
         <PrintLabelSheet products={sheetProducts} initialFormat={labelFormat} onClose={() => setShowSheet(false)} />
       ) : null}
+
+      <UpgradeToProModal
+        open={showUpgradeModal}
+        passportCount={passportCount}
+        busy={upgrading || billingBusy}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={() => {
+          setShowUpgradeModal(false)
+          void handleUpgrade("pro-plan")
+        }}
+      />
     </>
   )
 }

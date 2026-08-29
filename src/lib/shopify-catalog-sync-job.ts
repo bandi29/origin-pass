@@ -31,7 +31,13 @@ import {
   bulkUpsertShopifyProducts,
   type BulkProductInput,
 } from "@/lib/shopify-sync"
-import { TIER_LIMITS, normalizeTier } from "@/lib/shopify-billing"
+import {
+  PLAN_LIMITS,
+  TIER_LIMITS,
+  countPassportsForOrganization,
+  normalizeTier,
+  upgradePassportLimitMessage,
+} from "@/lib/shopify-billing"
 import { getShopifyAdminToken } from "@/lib/shopify-admin-token"
 
 /** Catalogs at or above this size skip cursor pagination for a Bulk Operation. */
@@ -120,23 +126,16 @@ export async function processCatalogSyncJob(
     return { ok: false, message, processed: 0, total: null }
   }
 
-  // ── Tier gating ─────────────────────────────────────────────────────────────
+  // ── Tier gating (passport count, not product rows) ──────────────────────────
   const tier = normalizeTier(storeRow?.subscription_tier)
-  const tierLimit = TIER_LIMITS[tier].maxSyncedProducts
+  const tierLimit = PLAN_LIMITS[tier].maxPassports
+  const passportCount = await countPassportsForOrganization(orgId)
 
-  // Free plan hard stop: at the product ceiling, block the sync outright with an
-  // upgrade prompt instead of silently importing nothing new.
-  if (tierLimit != null && tier === "free") {
-    const { count: localCount } = await supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId)
-      .eq("is_archived", false)
-    if ((localCount ?? 0) >= tierLimit) {
-      const message = `Your Boutique Free plan includes ${tierLimit} products and you already have ${localCount}. Upgrade to Grower ($29/mo) for up to 500 products, or Enterprise ($79/mo) for unlimited.`
-      await finishSharedSyncProgress(shop, { ok: false, message, processed: 0, total: null })
-      return { ok: false, message, processed: 0, total: null }
-    }
+  // At the passport ceiling, block the sync with an upgrade prompt.
+  if (tierLimit != null && passportCount >= tierLimit) {
+    const message = upgradePassportLimitMessage(passportCount, tier)
+    await finishSharedSyncProgress(shop, { ok: false, message, processed: 0, total: null })
+    return { ok: false, message, processed: 0, total: null }
   }
 
   let synced = 0
@@ -153,17 +152,22 @@ export async function processCatalogSyncJob(
     }
   }
 
-  // Effective per-run import ceiling: the serverless inline cap and the plan
-  // ceiling, whichever is tighter. Enterprise has no plan ceiling.
+  // Effective per-run import ceiling: serverless inline cap and remaining
+  // passport slots (Scale has no plan ceiling). Approximate 1 product ≈ slots
+  // for progress stopping; hard stop still uses live passport counts below.
+  const remainingSlots =
+    tierLimit == null ? Number.POSITIVE_INFINITY : Math.max(0, tierLimit - passportCount)
   const effectiveCap =
-    tierLimit == null ? inlineCap : Math.min(inlineCap ?? Number.POSITIVE_INFINITY, tierLimit)
+    remainingSlots === Number.POSITIVE_INFINITY
+      ? inlineCap
+      : Math.min(inlineCap ?? Number.POSITIVE_INFINITY, remainingSlots)
 
   try {
     // 1. Total count discovery (productsCount) — the progress denominator.
     totalProducts = await fetchShopifyCatalogCount(shop, token)
     await updateSharedSyncProgress(shop, { total: totalProducts, processed: 0, message: "Preparing data…" })
 
-    // The Bulk Operations path is Enterprise-only AND worker-only: lower tiers use
+    // The Bulk Operations path is Scale-only AND worker-only: lower tiers use
     // standard GraphQL cursor paging, and a serverless inline run (inlineCap set)
     // cannot sit through an async export regardless of tier.
     if (
@@ -265,11 +269,11 @@ export async function processCatalogSyncJob(
     // upgrade prompt; the pure infrastructure cap gets the ops message.
     const processedCount = synced + failed
     const totalLabel = totalProducts != null ? totalProducts.toLocaleString() : "all"
-    const hitPlanLimit = tierLimit != null && processedCount >= tierLimit
+    const hitPlanLimit = tierLimit != null && processedCount >= remainingSlots
     const message = hitPlanLimit
       ? tier === "free"
-        ? `Synced the first ${tierLimit} of ${totalLabel} products — the Boutique Free plan limit. Upgrade to Grower ($29/mo) for up to 500 products, or Enterprise ($79/mo) for unlimited.`
-        : `Synced the first ${tierLimit.toLocaleString()} of ${totalLabel} products — the Grower plan limit. Upgrade to Enterprise ($79/mo) for unlimited products and high-volume Bulk API syncs.`
+        ? `Stopped at the Starter Free limit of ${tierLimit} passports. Upgrade to Pro ($29/mo) for up to 250 items, or Scale ($79/mo) for unlimited.`
+        : `Stopped at the Pro plan limit of ${tierLimit} passports. Upgrade to Scale ($79/mo) for unlimited passports and high-volume Bulk API syncs.`
       : `Synced the first ${processedCount.toLocaleString()} of ${totalLabel} products. Catalogs this large need the background sync infrastructure — deploy the sync worker (Redis + worker service) to import everything.`
     const outcome = { ok: false, message, processed: processedCount, total: totalProducts, capped: true }
     await finishSharedSyncProgress(shop, outcome)

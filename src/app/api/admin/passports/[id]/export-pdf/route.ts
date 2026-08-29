@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import {
   buildHangtagLabelData,
   hangtagPdfFilename,
@@ -7,6 +8,7 @@ import {
   renderHangtagPdf,
   type HangtagLayoutType,
 } from "@/lib/hangtag-pdf"
+import { PLAN_LIMITS, getSubscriptionTierForOrgId } from "@/lib/shopify-billing"
 
 export const runtime = "nodejs"
 
@@ -43,6 +45,36 @@ export async function GET(request: Request, context: RouteContext) {
   } = await supabase.auth.getUser()
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const needsPaidLabels = layoutType === "avery-5160" || layoutType === "thermal-4x6"
+  if (needsPaidLabels) {
+    const admin = createAdminClient()
+    const { data: passportRow } = await admin
+      .from("passports")
+      .select("organization_id, product:products(organization_id)")
+      .eq("id", passportId)
+      .maybeSingle()
+    const productOrg = (
+      Array.isArray((passportRow as { product?: unknown } | null)?.product)
+        ? (passportRow as { product: Array<{ organization_id?: string | null }> }).product[0]
+        : (passportRow as { product?: { organization_id?: string | null } } | null)?.product
+    ) as { organization_id?: string | null } | null | undefined
+    const orgId =
+      (passportRow as { organization_id?: string | null } | null)?.organization_id ??
+      productOrg?.organization_id ??
+      null
+    const plan = await getSubscriptionTierForOrgId(orgId)
+    if (!PLAN_LIMITS[plan].allowLabelExports) {
+      return Response.json(
+        {
+          error:
+            "Avery and Thermal label exports are available on Pro ($29/mo) and Scale. Upgrade to unlock print layouts.",
+          code: "PLAN_LABEL_EXPORTS_LOCKED",
+        },
+        { status: 403 },
+      )
+    }
   }
 
   try {

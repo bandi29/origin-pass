@@ -115,7 +115,10 @@ export function BulkImportModal({ open, onClose, onQueued }: BulkImportModalProp
       })
 
       if (!result.success) {
-        toast.error(result.error ?? "Batch import failed")
+        toast.error(
+          result.code === "PLAN_BULK_CSV_LOCKED" ? "Scale plan required" : "Batch import failed",
+          result.error ?? "Batch import failed",
+        )
         return
       }
 
@@ -140,7 +143,7 @@ export function BulkImportModal({ open, onClose, onQueued }: BulkImportModalProp
       open={open}
       onClose={handleClose}
       title="Bulk Import (CSV)"
-      description={`Upload a .csv or .xlsx manifest to bulk-create passport profiles. Required columns: ${REQUIRED_COLUMNS_LABEL}.`}
+      description={`Scale plan only. Upload a .csv or .xlsx manifest to bulk-create passport profiles. Required columns: ${REQUIRED_COLUMNS_LABEL}.`}
       size="md"
     >
       <div className="space-y-4">

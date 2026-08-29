@@ -38,7 +38,58 @@ api_version = "2024-10"
   uri = "/api/webhooks/gdpr/customers_data_request"
 
 [access_scopes]
-scopes = "read_products,write_products"
+scopes = "read_products,write_products,read_metaobjects,write_metaobjects"
 
 [auth]
 redirect_urls = ["https://origin-pass.vercel.app/api/shopify/auth/callback"]
+
+# —— Theme App Extension data model (DPP badge) ——
+# App-owned metaobject + product link so the storefront block can resolve a passport
+# without hardcoding. Values are written by OriginPass when a passport is published;
+# the badge also falls back to /sp/{shop}/{productId}.
+
+[metaobjects.app.digital_product_passport]
+name = "Digital Product Passport"
+description = "OriginPass passport link and summary fields for Online Store PDP badges."
+display_name_field = "title"
+access.admin = "merchant_read"
+access.storefront = "public_read"
+
+[metaobjects.app.digital_product_passport.fields.title]
+name = "Title"
+type = "single_line_text_field"
+required = true
+
+[metaobjects.app.digital_product_passport.fields.passport_url]
+name = "Passport URL"
+type = "url"
+required = true
+
+[metaobjects.app.digital_product_passport.fields.passport_id]
+name = "Passport ID"
+type = "single_line_text_field"
+
+[metaobjects.app.digital_product_passport.fields.status]
+name = "Status"
+type = "single_line_text_field"
+
+[product.metafields.app.dpp]
+name = "OriginPass DPP"
+description = "Linked Digital Product Passport metaobject for the PDP badge."
+type = "metaobject_reference<$app:digital_product_passport>"
+access.admin = "merchant_read"
+access.storefront = "public_read"
+
+[product.metafields.app.passport_url]
+name = "OriginPass Passport URL"
+description = "Public Digital Product Passport URL (fallback when metaobject is unset)."
+type = "url"
+access.admin = "merchant_read"
+access.storefront = "public_read"
+
+[shop.metafields.app.plan_handle]
+name = "OriginPass Plan"
+description = "Active billing handle (free | pro-plan | scale-plan) for storefront entitlement checks."
+type = "single_line_text_field"
+access.admin = "merchant_read"
+access.storefront = "public_read"

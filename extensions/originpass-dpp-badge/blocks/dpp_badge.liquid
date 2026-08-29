@@ -1,0 +1,205 @@
+{% comment %}
+  OriginPass — Digital Product Passport badge (Theme App Block).
+  Reads app-owned product metafield / metaobject when present; otherwise builds
+  /sp/{shop}/{productId} against the configured OriginPass base URL.
+{% endcomment %}
+
+{% liquid
+  assign shop_slug = shop.permanent_domain | remove: '.myshopify.com'
+  assign base_url = block.settings.passport_base_url | default: 'https://origin-pass.vercel.app' | strip
+  assign base_len = base_url | size | minus: 1
+  if base_url != blank
+    assign last_char = base_url | slice: base_len, 1
+    if last_char == '/'
+      assign base_url = base_url | slice: 0, base_len
+    endif
+  endif
+
+  assign meta_url = product.metafields.app.passport_url.value
+  assign meta_dpp = product.metafields.app.dpp.value
+  assign linked = false
+
+  if meta_url != blank
+    assign passport_url = meta_url
+    assign linked = true
+  elsif meta_dpp != blank and meta_dpp.passport_url.value != blank
+    assign passport_url = meta_dpp.passport_url.value
+    assign linked = true
+  else
+    assign passport_url = base_url | append: '/sp/' | append: shop_slug | append: '/' | append: product.id
+  endif
+
+  if meta_dpp != blank
+    assign linked = true
+  endif
+
+  assign show_block = true
+  if block.settings.require_linked and linked == false
+    assign show_block = false
+  endif
+
+  assign button_text = block.settings.button_text | default: 'View Digital Product Passport 🇪🇺'
+  assign badge_style = block.settings.badge_style | default: 'pill'
+  assign color_mode = block.settings.color_mode | default: 'inherit'
+  assign click_behavior = block.settings.click_behavior | default: 'modal'
+  assign link_target = block.settings.link_target | default: '_blank'
+
+  comment
+    Scale-only: custom badge colors. Free/Pro always render standard (inherit) styling
+    even if the merchant selected custom in the theme editor.
+  endcomment
+  assign plan_handle = shop.metafields.app.plan_handle.value | default: 'free'
+  if plan_handle != 'scale-plan' and color_mode == 'custom'
+    assign color_mode = 'inherit'
+  endif
+
+  assign summary_url = base_url | append: '/api/public/shop/' | append: shop_slug | append: '/' | append: product.id | append: '/summary'
+  if product.selected_or_first_available_variant
+    assign summary_url = summary_url | append: '?variant=' | append: product.selected_or_first_available_variant.id
+  endif
+%}
+
+{% if show_block %}
+  <div
+    id="OriginPass-DPP-{{ block.id }}"
+    class="originpass-dpp"
+    data-style="{{ badge_style | escape }}"
+    data-color-mode="{{ color_mode | escape }}"
+    data-click-behavior="{{ click_behavior | escape }}"
+    data-link-target="{{ link_target | escape }}"
+    data-passport-url="{{ passport_url | escape }}"
+    data-summary-url="{{ summary_url | escape }}"
+    data-product-id="{{ product.id }}"
+    data-shop="{{ shop_slug | escape }}"
+    data-label-loading="{{ 'badge.loading' | t | escape }}"
+    data-label-error="{{ 'badge.error' | t | escape }}"
+    data-label-open-full="{{ 'badge.open_full' | t | escape }}"
+    data-label-close="{{ 'badge.close' | t | escape }}"
+    data-label-story="{{ 'badge.story' | t | escape }}"
+    data-label-materials="{{ 'badge.materials' | t | escape }}"
+    data-label-origin="{{ 'badge.origin' | t | escape }}"
+    data-label-care="{{ 'badge.care' | t | escape }}"
+    {% if color_mode == 'custom' %}
+      style="--op-custom-accent: {{ block.settings.accent_color }}; --op-custom-text: {{ block.settings.text_color }};"
+    {% endif %}
+    {{ block.shopify_attributes }}
+  >
+    {% if click_behavior == 'link' %}
+      <a
+        class="originpass-dpp__trigger"
+        data-op-trigger
+        href="{{ passport_url | escape }}"
+        {% if link_target == '_blank' %}target="_blank" rel="noopener noreferrer"{% endif %}
+      >
+        {% render 'dpp-badge-inner', badge_style: badge_style, button_text: button_text %}
+      </a>
+    {% else %}
+      <button type="button" class="originpass-dpp__trigger" data-op-trigger>
+        {% render 'dpp-badge-inner', badge_style: badge_style, button_text: button_text %}
+      </button>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% schema %}
+{
+  "name": "t:name",
+  "target": "section",
+  "stylesheet": "dpp-badge.css",
+  "javascript": "dpp-badge.js",
+  "templates": ["product"],
+  "settings": [
+    {
+      "type": "header",
+      "content": "t:settings.heading_style"
+    },
+    {
+      "type": "select",
+      "id": "badge_style",
+      "label": "t:settings.badge_style",
+      "options": [
+        { "value": "pill", "label": "t:settings.badge_style_options.pill" },
+        { "value": "link", "label": "t:settings.badge_style_options.link" },
+        { "value": "card", "label": "t:settings.badge_style_options.card" }
+      ],
+      "default": "pill"
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "t:settings.button_text",
+      "default": "View Digital Product Passport 🇪🇺"
+    },
+    {
+      "type": "header",
+      "content": "t:settings.heading_colors"
+    },
+    {
+      "type": "select",
+      "id": "color_mode",
+      "label": "t:settings.color_mode",
+      "info": "Custom colors require the Scale plan. Pro and Free use the standard badge styling.",
+      "options": [
+        { "value": "inherit", "label": "t:settings.color_mode_options.inherit" },
+        { "value": "custom", "label": "t:settings.color_mode_options.custom" }
+      ],
+      "default": "inherit"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "t:settings.accent_color",
+      "info": "Scale plan — custom badge accent.",
+      "default": "#111827"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "t:settings.text_color",
+      "info": "Scale plan — custom badge text color.",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "header",
+      "content": "t:settings.heading_behavior"
+    },
+    {
+      "type": "select",
+      "id": "click_behavior",
+      "label": "t:settings.click_behavior",
+      "options": [
+        { "value": "modal", "label": "t:settings.click_behavior_options.modal" },
+        { "value": "link", "label": "t:settings.click_behavior_options.link" }
+      ],
+      "default": "modal"
+    },
+    {
+      "type": "select",
+      "id": "link_target",
+      "label": "t:settings.link_target",
+      "options": [
+        { "value": "_blank", "label": "t:settings.link_target_options._blank" },
+        { "value": "_self", "label": "t:settings.link_target_options._self" }
+      ],
+      "default": "_blank"
+    },
+    {
+      "type": "header",
+      "content": "t:settings.heading_visibility"
+    },
+    {
+      "type": "checkbox",
+      "id": "require_linked",
+      "label": "t:settings.require_linked",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "passport_base_url",
+      "label": "t:settings.passport_base_url",
+      "info": "t:settings.passport_base_url_info",
+      "default": "https://origin-pass.vercel.app"
+    }
+  ]
+}
+{% endschema %}

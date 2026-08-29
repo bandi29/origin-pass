@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getScopedProductIds } from "@/backend/modules/organizations/scope"
 import { createClient } from "@/lib/supabase/server"
 import { ensureBrandProfile } from "@/lib/tenancy"
+import { schedulePassportStorefrontSync } from "@/lib/shopify-dpp-storefront-sync"
 
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -30,7 +31,8 @@ export async function POST(req: Request) {
     return Response.json({ error: msg }, { status: 400 })
   }
 
-  const { productId, story, materials, timeline } = parsed.data
+  const { productId, story, materials, timeline, industryTemplateId, customFields, gpsr } =
+    parsed.data
 
   const scoped = await getScopedProductIds(user.id)
   if (!scoped.includes(productId)) {
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
   const admin = createAdminClient()
   const { data: existingPassport } = await admin
     .from("passports")
-    .select("id, metadata")
+    .select("id, metadata, gpsr")
     .eq("product_id", productId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -67,15 +69,26 @@ export async function POST(req: Request) {
       story: story ?? "",
       materials: materials ?? [],
       timeline: timeline ?? [],
+      industryTemplateId: industryTemplateId ?? null,
+      customFields: customFields ?? {},
     },
   }
 
-  const { error: upErr } = await admin.from("passports").update({ metadata: nextMeta }).eq("id", passportId)
+  const { error: upErr } = await admin
+    .from("passports")
+    .update({
+      metadata: nextMeta,
+      ...(gpsr !== undefined ? { gpsr } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", passportId)
 
   if (upErr) {
     console.error("passport metadata update:", upErr)
     return Response.json({ error: "Could not save passport." }, { status: 500 })
   }
+
+  schedulePassportStorefrontSync(passportId)
 
   return Response.json({ passportId })
 }

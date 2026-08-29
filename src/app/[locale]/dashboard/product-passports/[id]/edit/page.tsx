@@ -29,6 +29,7 @@ export default async function PassportEditPage({ params }: PageProps) {
       verificationComplianceStatus={payload.verificationComplianceStatus}
       verificationHistory={payload.verificationHistory}
       mode="edit"
+      esprScore={payload.esprScore}
     />
   )
 }

@@ -20,7 +20,15 @@ import {
 } from "lucide-react"
 import clsx from "clsx"
 import { getCountryOptions, getStateOptionsByCountryName } from "@/lib/location-options"
-import type { MaterialRow, TimelineRow } from "@/lib/passport-wizard-schemas"
+import type { MaterialRow, TimelineRow, GpsrData } from "@/lib/passport-wizard-schemas"
+import { EMPTY_GPSR } from "@/lib/passport-wizard-schemas"
+import {
+  emptyCustomFieldsFromTemplate,
+  getIndustryTemplate,
+  type IndustryTemplateId,
+} from "@/lib/templates"
+import { IndustryTemplatePicker } from "@/components/passports/IndustryTemplatePicker"
+import { GpsrComplianceSection } from "@/components/passports/GpsrComplianceSection"
 import type { CategoryKey, SchemaField } from "@/lib/compliance/category-schemas"
 import { categorySchemas } from "@/lib/compliance/category-schemas"
 import type { ComplianceData } from "@/lib/compliance/category-compliance-strategy"
@@ -143,6 +151,10 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
   const [story, setStory] = useState("")
   const [materials, setMaterials] = useState<MaterialRow[]>([{ name: "", source: "", sustainabilityTag: "" }])
   const [timeline, setTimeline] = useState<TimelineRow[]>([])
+  const [industryTemplateId, setIndustryTemplateId] = useState<IndustryTemplateId | "">("")
+  const [customFields, setCustomFields] = useState<Record<string, string>>({})
+  const [gpsr, setGpsr] = useState<GpsrData>(EMPTY_GPSR)
+  const [gpsrOpen, setGpsrOpen] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -304,9 +316,17 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
           setComplianceData(p.complianceData as ComplianceData)
         }
       }
-      const pass = data.passport
+      const pass = data.passport as {
+        id?: string
+        story?: string | null
+        materials?: MaterialRow[]
+        timeline?: TimelineRow[]
+        industryTemplateId?: IndustryTemplateId | null
+        customFields?: Record<string, string>
+        gpsr?: GpsrData | null
+      } | null
       if (pass) {
-        setPassportId(pass.id)
+        setPassportId(pass.id ?? "")
         setStory(pass.story ?? "")
         if (Array.isArray(pass.materials) && pass.materials.length) {
           setMaterials(
@@ -325,6 +345,34 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
               date: t.date ?? "",
             }))
           )
+        }
+        if (pass.industryTemplateId) {
+          setIndustryTemplateId(pass.industryTemplateId)
+        }
+        if (pass.customFields && typeof pass.customFields === "object") {
+          setCustomFields(pass.customFields)
+        }
+        if (pass.gpsr && typeof pass.gpsr === "object") {
+          setGpsr({
+            euResponsiblePerson: {
+              ...EMPTY_GPSR.euResponsiblePerson,
+              ...pass.gpsr.euResponsiblePerson,
+            },
+            safetyInformation: Array.isArray(pass.gpsr.safetyInformation)
+              ? pass.gpsr.safetyInformation
+              : [],
+            productIdentifiers: {
+              ...EMPTY_GPSR.productIdentifiers,
+              ...pass.gpsr.productIdentifiers,
+            },
+          })
+          const hasGpsr =
+            Boolean(pass.gpsr.euResponsiblePerson?.name) ||
+            Boolean(pass.gpsr.euResponsiblePerson?.company) ||
+            Boolean(pass.gpsr.euResponsiblePerson?.email) ||
+            (pass.gpsr.safetyInformation?.length ?? 0) > 0 ||
+            Boolean(pass.gpsr.productIdentifiers?.gtin)
+          if (hasGpsr) setGpsrOpen(true)
         }
       }
       if (!cancelled) setDraftHydrated(true)
@@ -496,6 +544,9 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
         story: story || null,
         materials: materials.filter((m) => m.name || m.source || m.sustainabilityTag),
         timeline: timeline.filter((t) => t.stepName || t.location || t.date),
+        industryTemplateId: industryTemplateId || null,
+        customFields,
+        gpsr,
       }),
     })
     const data = (await res.json().catch(() => ({}))) as { passportId?: string; error?: string }
@@ -504,7 +555,7 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
     }
     if (data.passportId) setPassportId(data.passportId)
     return { ok: true }
-  }, [productId, story, materials, timeline])
+  }, [productId, story, materials, timeline, industryTemplateId, customFields, gpsr])
 
   const debouncedSavePassport = useDebouncedCallback(savePassportPost, 800)
 
@@ -512,8 +563,30 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
     if (step === 2 && productId && draftHydrated && !isComplianceFlow) {
       debouncedSavePassport()
     }
-  }, [step, productId, draftHydrated, isComplianceFlow, story, materials, timeline, debouncedSavePassport])
+  }, [
+    step,
+    productId,
+    draftHydrated,
+    isComplianceFlow,
+    story,
+    materials,
+    timeline,
+    industryTemplateId,
+    customFields,
+    gpsr,
+    debouncedSavePassport,
+  ])
 
+  function applyIndustryTemplate(id: IndustryTemplateId) {
+    const tpl = getIndustryTemplate(id)
+    if (!tpl) return
+    setIndustryTemplateId(id)
+    setStory(tpl.story)
+    setMaterials(tpl.materials.map((m) => ({ ...m })))
+    setTimeline(tpl.timeline.map((t) => ({ ...t })))
+    setCustomFields(emptyCustomFieldsFromTemplate(tpl))
+    if (!category.trim()) setCategory(tpl.categoryHint)
+  }
   useEffect(() => {
     if (!productId || !draftHydrated || !isComplianceFlow) return
     if (step === 1 || step === 2) {
@@ -719,6 +792,9 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
           story: story || null,
           materials: materials.filter((m) => m.name || m.source || m.sustainabilityTag),
           timeline: timeline.filter((t) => t.stepName || t.location || t.date),
+          industryTemplateId: industryTemplateId || null,
+          customFields,
+          gpsr,
         }),
       })
       const data = await res.json()
@@ -920,6 +996,10 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
     setStory("")
     setMaterials([{ name: "", source: "", sustainabilityTag: "" }])
     setTimeline([])
+    setIndustryTemplateId("")
+    setCustomFields({})
+    setGpsr(EMPTY_GPSR)
+    setGpsrOpen(false)
     setQrPreview(null)
     setPublicUrl(null)
     setMintQuantity(1)
@@ -1335,6 +1415,12 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
 
             {!isComplianceFlow ? (
               <>
+                <IndustryTemplatePicker
+                  value={industryTemplateId}
+                  onSelect={applyIndustryTemplate}
+                  cardClass={cardClass}
+                />
+
                 <div className={cardClass}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -1511,6 +1597,52 @@ export function PassportCreationWizard({ editProductId }: { editProductId?: stri
                 ))}
               </div>
             </div>
+
+            {industryTemplateId
+              ? (() => {
+                  const tpl = getIndustryTemplate(industryTemplateId)
+                  if (!tpl?.customFields.length) return null
+                  return (
+                    <div className={cardClass}>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {tpl.label} fields
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Industry-specific details seeded by your template
+                      </p>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {tpl.customFields.map((field) => (
+                          <div key={field.key} className="sm:col-span-1">
+                            <label className="mb-1 block text-xs font-medium text-slate-600">
+                              {field.label}
+                            </label>
+                            <input
+                              className={inputClass}
+                              value={customFields[field.key] ?? ""}
+                              onChange={(e) =>
+                                setCustomFields((prev) => ({
+                                  ...prev,
+                                  [field.key]: e.target.value,
+                                }))
+                              }
+                              placeholder={field.placeholder}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()
+              : null}
+
+            <GpsrComplianceSection
+              value={gpsr}
+              onChange={setGpsr}
+              inputClass={inputClass}
+              cardClass={cardClass}
+              open={gpsrOpen}
+              onOpenChange={setGpsrOpen}
+            />
               </>
             ) : complianceCategoryKey && complianceSchema ? (
               <>

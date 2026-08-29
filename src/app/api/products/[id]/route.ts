@@ -26,7 +26,7 @@ export async function GET(_req: Request, ctx: Ctx) {
 
   const { data: passport } = await supabase
     .from("passports")
-    .select("id, metadata")
+    .select("id, metadata, gpsr")
     .eq("product_id", productId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -42,7 +42,15 @@ export async function GET(_req: Request, ctx: Ctx) {
   }
 
   const pm = passport?.metadata as
-    | { wizard?: { story?: string; materials?: unknown[]; timeline?: unknown[] } }
+    | {
+        wizard?: {
+          story?: string
+          materials?: unknown[]
+          timeline?: unknown[]
+          industryTemplateId?: string | null
+          customFields?: Record<string, string>
+        }
+      }
     | null
     | undefined
   const wizard = pm?.wizard
@@ -66,6 +74,9 @@ export async function GET(_req: Request, ctx: Ctx) {
           story: wizard?.story ?? null,
           materials: wizard?.materials ?? [],
           timeline: wizard?.timeline ?? [],
+          industryTemplateId: wizard?.industryTemplateId ?? null,
+          customFields: wizard?.customFields ?? {},
+          gpsr: (passport as { gpsr?: unknown }).gpsr ?? {},
         }
       : null,
   })

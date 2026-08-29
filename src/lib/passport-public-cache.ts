@@ -33,6 +33,7 @@ export type CachedPassportSnapshot = {
     story: string | null
     materials: string | null
     origin: string | null
+    lifecycle: string | null
     image_url: string | null
     brand_id: string | null
     metadata: Record<string, unknown> | null
@@ -84,7 +85,7 @@ async function fetchPassportSnapshotUncached(passportId: string): Promise<Cached
     admin
       .from("products")
       .select(
-        "name, description, category, story, materials, origin, image_url, brand_id, metadata, passport_template_key",
+        "name, description, category, story, materials, origin, lifecycle, image_url, brand_id, metadata, passport_template_key",
       )
       .eq("id", productId)
       .single(),

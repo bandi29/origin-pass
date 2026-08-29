@@ -69,7 +69,7 @@ export function ComplianceScorecard({ result }: Props) {
                 id="eu-compliance-scorecard-title"
                 className="text-sm font-semibold text-[#202223]"
               >
-                EU Compliance Readiness
+                Catalog Data Completeness
               </h2>
               <span
                 className={clsx(
@@ -81,8 +81,8 @@ export function ComplianceScorecard({ result }: Props) {
               </span>
             </div>
             <p className="text-xs text-[#6d7175]">
-              Score {result.score}/100 · Tier: {result.tier}. Based on mandatory ESPR passport
-              fields for EU market readiness.
+              Score {result.score}/100 · {result.tier}. Covers the catalog fields set here —
+              full EU ESPR readiness, including GPSR, is scored on the product&apos;s passport.
             </p>
           </div>
 
@@ -122,7 +122,8 @@ export function ComplianceScorecard({ result }: Props) {
             </div>
           ) : (
             <p className="rounded-lg border border-[#aee9d1] bg-[#eaf4f1] px-3.5 py-2.5 text-sm text-[#0c5132]">
-              All weighted ESPR fields are complete. This product is marked EU ESPR Export Ready.
+              Every catalog field here is complete. Check the passport scorecard for full EU ESPR
+              readiness, including GPSR responsible-person and safety information.
             </p>
           )}
         </div>

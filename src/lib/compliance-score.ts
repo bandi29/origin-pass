@@ -9,12 +9,22 @@ export const COMPLIANCE_WEIGHTS = {
   documents: 15,
 } as const
 
-export type ComplianceTier = "Non-Compliant" | "Basic" | "EU Export Ready"
+/**
+ * SCOPE: this scorer grades the five **catalog** fields the Shopify product editor
+ * collects (GTIN, origin, materials, care, a supporting document). It does NOT see
+ * GPSR data (EU responsible person, safety warnings) or recycled-content %, which
+ * `complianceScore.ts` grades on the passport.
+ *
+ * Labels are therefore deliberately scoped to catalog completeness. Claiming full
+ * "EU ESPR Export Ready" here contradicted the passport scorecard, which rated the
+ * same product only 67% / "Warning" for missing mandatory GPSR fields.
+ */
+export type ComplianceTier = "Incomplete" | "Partial" | "Catalog Data Complete"
 
 export type ComplianceRiskLabel =
-  | "High EU Border Risk"
-  | "Partial Compliance - Missing Fields"
-  | "EU ESPR Export Ready"
+  | "Missing core catalog data"
+  | "Partial - missing catalog fields"
+  | "Catalog data complete"
 
 export type ComplianceMissingItemId =
   | "gtin"
@@ -96,15 +106,15 @@ function hasMappedGtin(input: CompliancePassportInput): boolean {
 }
 
 export function complianceTierForScore(score: number): ComplianceTier {
-  if (score >= 86) return "EU Export Ready"
-  if (score >= 50) return "Basic"
-  return "Non-Compliant"
+  if (score >= 86) return "Catalog Data Complete"
+  if (score >= 50) return "Partial"
+  return "Incomplete"
 }
 
 export function complianceRiskLabelForScore(score: number): ComplianceRiskLabel {
-  if (score >= 86) return "EU ESPR Export Ready"
-  if (score >= 50) return "Partial Compliance - Missing Fields"
-  return "High EU Border Risk"
+  if (score >= 86) return "Catalog data complete"
+  if (score >= 50) return "Partial - missing catalog fields"
+  return "Missing core catalog data"
 }
 
 /**

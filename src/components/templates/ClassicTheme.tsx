@@ -64,6 +64,7 @@ export function ClassicTheme({
   storyText,
   structuredMaterials,
   timelineSteps,
+  initialLang = "en",
 }: PassportThemeComponentProps) {
   const stackClass = embed ? "space-y-3" : spacing.stackDense
 
@@ -151,26 +152,21 @@ export function ClassicTheme({
         </dl>
       </div>
 
-      {/* ── Origin ────────────────────────────────────────────────────── */}
-      <div className={infoCard}>
-        <h2 className={sectionLabel}>Origin</h2>
-        <p className="text-sm font-medium text-slate-900">
-          {productData?.origin?.trim() || batchData?.location || "—"}
-        </p>
-      </div>
-
-      {/* ── Story, materials, timeline (translated) ────────────────────── */}
+      {/* ── Story, materials, origin, care, timeline (translated) ──────── */}
       <PassportPublicI18n
         passportId={passportId}
         productName={productData?.name ?? "Product"}
         brandName={brandName}
         initialStory={storyText}
         fallbackStory={`${brandName} publishes digital product records so customers can verify authenticity in one scan.`}
+        initialOrigin={productData?.origin?.trim() || batchData?.location || null}
+        initialCare={productData?.lifecycle?.trim() || null}
         structuredMaterials={structuredMaterials ?? null}
         legacyMaterialsText={productData?.materials ?? null}
         timelineSteps={timelineSteps ?? null}
         sharePreview={sharePreview}
         themeVariant="classic"
+        initialLang={initialLang}
       />
 
       {/* ── Ownership registry ─────────────────────────────────────────── */}

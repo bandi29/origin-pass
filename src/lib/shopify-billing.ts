@@ -1,17 +1,16 @@
 /**
  * Shopify Billing — 3-tier subscription architecture.
  *
- * Boutique Free ($0) → Grower ($29/mo) → Enterprise ($79/mo).
+ * Starter Free ($0) → Pro (`pro-plan`, $29/mo) → Scale (`scale-plan`, $79/mo).
  *
- * Flow (native Admin GraphQL — this stack has no @shopify/shopify-app-remix, so
- * `shopify.api.billing.request` does not exist here; `appSubscriptionCreate` is
- * its underlying API): create subscription → redirect merchant to Shopify's
- * `confirmationUrl` → on approval Shopify fires the `app_subscriptions/update`
- * webhook with status ACTIVE → we persist the tier.
+ * Active plan is stored on `organizations.subscription_tier` as the Shopify plan
+ * handle (`free` | `pro-plan` | `scale-plan`). GraphQL `appSubscriptionCreate`
+ * uses display names; webhooks map those names (and legacy Grower/Enterprise)
+ * back to handles via {@link tierForSubscriptionName}.
  *
- * Cancel / downgrade uses `appSubscriptionCancel`; the webhook then sets the
- * org back to free. Plan switches cancel the tracked charge then create a new
- * subscription (Shopify does not mutate an active recurring charge in place).
+ * Flow: create subscription → merchant approves `confirmationUrl` →
+ * `app_subscriptions/update` webhook persists the tier. Cancel / switch uses
+ * `appSubscriptionCancel` then (for switch) a new charge.
  *
  * Shopify Admin merchants must use this module only — never Paddle
  * (`src/lib/paddle.ts` is web-portal billing).
@@ -20,42 +19,197 @@
 import { SHOPIFY_API_VERSION, isValidShopDomain } from "@/lib/shopify"
 import { createServerSupabaseClient } from "@/lib/supabase"
 
-export type SubscriptionTier = "free" | "grower" | "enterprise"
+/** Shopify / Partner plan handles. */
+export type PlanHandle = "free" | "pro-plan" | "scale-plan"
+
+/** @deprecated Prefer {@link PlanHandle} — kept as an alias for existing call sites. */
+export type SubscriptionTier = PlanHandle
 
 export const PAID_PLANS = {
-  grower: { name: "OriginPass Grower", price: 29 },
-  enterprise: { name: "OriginPass Enterprise", price: 79 },
+  "pro-plan": { name: "OriginPass Pro", handle: "pro-plan" as const, price: 29 },
+  "scale-plan": { name: "OriginPass Scale", handle: "scale-plan" as const, price: 79 },
 } as const
 
 export type PaidPlan = keyof typeof PAID_PLANS
 
-export const TIER_LIMITS: Record<
-  SubscriptionTier,
-  { maxSyncedProducts: number | null; evidenceUploads: boolean; bulkOperations: boolean }
+/**
+ * Entitlements keyed by active subscription handle.
+ * `maxPassports: null` means unlimited.
+ */
+export const PLAN_LIMITS: Record<
+  PlanHandle,
+  {
+    maxPassports: number | null
+    allowTranslations: boolean
+    allowPdfUploads: boolean
+    allowLabelExports: boolean
+    allowBadgeCustomization: boolean
+    allowBulkCsv: boolean
+    /** Shopify Admin Bulk Operations API for very large catalog syncs. */
+    bulkOperations: boolean
+  }
 > = {
-  free: { maxSyncedProducts: 15, evidenceUploads: false, bulkOperations: false },
-  grower: { maxSyncedProducts: 500, evidenceUploads: true, bulkOperations: false },
-  enterprise: { maxSyncedProducts: null, evidenceUploads: true, bulkOperations: true },
+  free: {
+    maxPassports: 10,
+    allowTranslations: false,
+    allowPdfUploads: false,
+    allowLabelExports: false,
+    allowBadgeCustomization: false,
+    allowBulkCsv: false,
+    bulkOperations: false,
+  },
+  "pro-plan": {
+    maxPassports: 250,
+    allowTranslations: true,
+    allowPdfUploads: true,
+    allowLabelExports: true,
+    allowBadgeCustomization: false,
+    allowBulkCsv: false,
+    bulkOperations: false,
+  },
+  "scale-plan": {
+    maxPassports: null,
+    allowTranslations: true,
+    allowPdfUploads: true,
+    allowLabelExports: true,
+    allowBadgeCustomization: true,
+    allowBulkCsv: true,
+    bulkOperations: true,
+  },
+}
+
+/**
+ * Backward-compatible shape used by older call sites.
+ * Prefer {@link PLAN_LIMITS} for new code.
+ */
+export const TIER_LIMITS: Record<
+  PlanHandle,
+  {
+    maxPassports: number | null
+    maxSyncedProducts: number | null
+    evidenceUploads: boolean
+    bulkOperations: boolean
+    allowTranslations: boolean
+    allowLabelExports: boolean
+    allowBadgeCustomization: boolean
+    allowBulkCsv: boolean
+  }
+> = {
+  free: {
+    maxPassports: PLAN_LIMITS.free.maxPassports,
+    maxSyncedProducts: PLAN_LIMITS.free.maxPassports,
+    evidenceUploads: PLAN_LIMITS.free.allowPdfUploads,
+    bulkOperations: PLAN_LIMITS.free.bulkOperations,
+    allowTranslations: PLAN_LIMITS.free.allowTranslations,
+    allowLabelExports: PLAN_LIMITS.free.allowLabelExports,
+    allowBadgeCustomization: PLAN_LIMITS.free.allowBadgeCustomization,
+    allowBulkCsv: PLAN_LIMITS.free.allowBulkCsv,
+  },
+  "pro-plan": {
+    maxPassports: PLAN_LIMITS["pro-plan"].maxPassports,
+    maxSyncedProducts: PLAN_LIMITS["pro-plan"].maxPassports,
+    evidenceUploads: PLAN_LIMITS["pro-plan"].allowPdfUploads,
+    bulkOperations: PLAN_LIMITS["pro-plan"].bulkOperations,
+    allowTranslations: PLAN_LIMITS["pro-plan"].allowTranslations,
+    allowLabelExports: PLAN_LIMITS["pro-plan"].allowLabelExports,
+    allowBadgeCustomization: PLAN_LIMITS["pro-plan"].allowBadgeCustomization,
+    allowBulkCsv: PLAN_LIMITS["pro-plan"].allowBulkCsv,
+  },
+  "scale-plan": {
+    maxPassports: PLAN_LIMITS["scale-plan"].maxPassports,
+    maxSyncedProducts: PLAN_LIMITS["scale-plan"].maxPassports,
+    evidenceUploads: PLAN_LIMITS["scale-plan"].allowPdfUploads,
+    bulkOperations: PLAN_LIMITS["scale-plan"].bulkOperations,
+    allowTranslations: PLAN_LIMITS["scale-plan"].allowTranslations,
+    allowLabelExports: PLAN_LIMITS["scale-plan"].allowLabelExports,
+    allowBadgeCustomization: PLAN_LIMITS["scale-plan"].allowBadgeCustomization,
+    allowBulkCsv: PLAN_LIMITS["scale-plan"].allowBulkCsv,
+  },
+}
+
+export function planLimitsFor(handle: PlanHandle) {
+  return PLAN_LIMITS[handle] ?? PLAN_LIMITS.free
 }
 
 export function isPaidPlan(value: unknown): value is PaidPlan {
-  return value === "grower" || value === "enterprise"
+  return value === "pro-plan" || value === "scale-plan"
 }
 
-export function normalizeTier(raw: unknown): SubscriptionTier {
-  return raw === "grower" || raw === "enterprise" ? raw : "free"
-}
-
-/** Map a Shopify AppSubscription name back to our tier (webhook reconciliation). */
-export function tierForSubscriptionName(name: string | null | undefined): SubscriptionTier {
-  const normalized = (name ?? "").toLowerCase()
-  if (normalized.includes("enterprise")) return "enterprise"
-  if (normalized.includes("grower")) return "grower"
+/**
+ * Normalize DB / webhook / Partner values to a plan handle.
+ * Accepts legacy `grower` / `enterprise` rows until migration completes.
+ */
+export function normalizeTier(raw: unknown): PlanHandle {
+  if (raw === "pro-plan" || raw === "pro" || raw === "grower") return "pro-plan"
+  if (raw === "scale-plan" || raw === "scale" || raw === "enterprise") return "scale-plan"
   return "free"
 }
 
+/** Map a Shopify AppSubscription name (or managed-pricing handle) back to our tier. */
+export function tierForSubscriptionName(name: string | null | undefined): PlanHandle {
+  const normalized = (name ?? "").toLowerCase().trim()
+  if (!normalized) return "free"
+  if (
+    normalized === "scale-plan" ||
+    normalized.includes("scale") ||
+    normalized.includes("enterprise")
+  ) {
+    return "scale-plan"
+  }
+  if (
+    normalized === "pro-plan" ||
+    normalized.includes("pro") ||
+    normalized.includes("grower")
+  ) {
+    return "pro-plan"
+  }
+  return "free"
+}
+
+export function passportLimitLabel(tier: PlanHandle): string {
+  const max = PLAN_LIMITS[tier].maxPassports
+  return max == null ? "unlimited" : String(max)
+}
+
+export function upgradePassportLimitMessage(currentCount: number, tier: PlanHandle = "free"): string {
+  if (tier === "free") {
+    return `You've reached the Starter Free limit of ${PLAN_LIMITS.free.maxPassports} passports (${currentCount} in use). Upgrade to Pro for up to 250 items.`
+  }
+  if (tier === "pro-plan") {
+    return `You've reached the Pro plan limit of ${PLAN_LIMITS["pro-plan"].maxPassports} passports (${currentCount} in use). Upgrade to Scale for unlimited passports.`
+  }
+  return "Passport limit reached."
+}
+
+export async function countPassportsForOrganization(orgId: string): Promise<number> {
+  if (!orgId) return 0
+  try {
+    const supabase = createServerSupabaseClient()
+    const { count } = await supabase
+      .from("passports")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+    return count ?? 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Whether `additional` new passport rows may be created under the plan.
+ */
+export function canCreatePassports(
+  tier: PlanHandle,
+  currentCount: number,
+  additional = 1,
+): boolean {
+  const max = PLAN_LIMITS[tier].maxPassports
+  if (max == null) return true
+  return currentCount + additional <= max
+}
+
 /** Read the store's tier by shop domain. Fails safe to "free". */
-export async function getSubscriptionTier(shop: string): Promise<SubscriptionTier> {
+export async function getSubscriptionTier(shop: string): Promise<PlanHandle> {
   if (!isValidShopDomain(shop)) return "free"
   try {
     const supabase = createServerSupabaseClient()
@@ -63,6 +217,21 @@ export async function getSubscriptionTier(shop: string): Promise<SubscriptionTie
       .from("organizations")
       .select("subscription_tier")
       .eq("shop_domain", shop)
+      .maybeSingle()
+    return normalizeTier((data as { subscription_tier?: string | null } | null)?.subscription_tier)
+  } catch {
+    return "free"
+  }
+}
+
+export async function getSubscriptionTierForOrgId(orgId: string | null | undefined): Promise<PlanHandle> {
+  if (!orgId) return "free"
+  try {
+    const supabase = createServerSupabaseClient()
+    const { data } = await supabase
+      .from("organizations")
+      .select("subscription_tier")
+      .eq("id", orgId)
       .maybeSingle()
     return normalizeTier((data as { subscription_tier?: string | null } | null)?.subscription_tier)
   } catch {
@@ -93,7 +262,6 @@ export async function getTrackedSubscriptionId(shop: string): Promise<string | n
  * - Default / App Store review: `test: true` (no real card charge)
  * - `SHOPIFY_BILLING_LIVE=1`: live charges for production merchants
  * - `SHOPIFY_BILLING_FORCE_TEST=1`: keeps test mode even when LIVE=1
- *   (use during App Store review so $29 / $79 upgrades stay sandboxed)
  */
 export function shouldUseShopifyTestBilling(): boolean {
   if (process.env.SHOPIFY_BILLING_FORCE_TEST === "1") return true
@@ -146,7 +314,8 @@ export async function createSubscriptionConfirmationUrl(input: {
       body: JSON.stringify({
         query: mutation,
         variables: {
-          name: planDef.name,
+          // Include handle so webhook name→tier mapping stays unambiguous.
+          name: `${planDef.name} (${planDef.handle})`,
           returnUrl,
           test: useTestCharge,
           price: planDef.price.toFixed(2),
@@ -288,6 +457,8 @@ export async function applySubscriptionWebhook(
       .update({ subscription_tier: tier, shopify_subscription_id: gid })
       .eq("shop_domain", shop)
     console.info(`[shopify-billing] ${shop} → ${tier} (subscription active)`)
+    const { scheduleShopPlanMetafieldSync } = await import("@/lib/shopify-plan-metafield")
+    scheduleShopPlanMetafieldSync(shop, tier)
     return
   }
 
@@ -308,5 +479,7 @@ export async function applySubscriptionWebhook(
       .update({ subscription_tier: "free", shopify_subscription_id: null })
       .eq("shop_domain", shop)
     console.info(`[shopify-billing] ${shop} → free (subscription ${status.toLowerCase()})`)
+    const { scheduleShopPlanMetafieldSync } = await import("@/lib/shopify-plan-metafield")
+    scheduleShopPlanMetafieldSync(shop, "free")
   }
 }

@@ -1,6 +1,9 @@
+"use client"
+
 import { Link } from "@/i18n/navigation"
 import { ExternalLink, Download, Eye } from "lucide-react"
 import { PassportStatusBadge } from "./PassportStatusBadge"
+import { PrintExportQrButton } from "./PrintExportQrButton"
 import type { PassportRow } from "@/lib/passports-data"
 
 type PassportTableProps = {
@@ -109,6 +112,10 @@ export function PassportTable({
                     <ExternalLink className="h-3.5 w-3.5" />
                     Verify
                   </a>
+                  <PrintExportQrButton
+                    passportId={p.id}
+                    serialNumber={p.serial_number}
+                  />
                   <Link
                     href={`/dashboard/product-identity/passports/${p.id}?tab=qr`}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"

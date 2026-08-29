@@ -7,6 +7,12 @@ import { translatePassportWithOpenAI } from "@/lib/ai-translate-passport"
 import { hashIpForStorage } from "@/lib/ip-hash"
 import { checkTranslateRateLimit } from "@/lib/translate-rate-limit"
 import { ensureBrandProfile } from "@/lib/tenancy"
+import { PLAN_LIMITS, getSubscriptionTierForOrgId } from "@/lib/shopify-billing"
+
+/**
+ * Legacy OpenAI → `passport_translations` table.
+ * Public pages now use `passports.translations` via GET /api/public/passport/[id]/content.
+ */
 
 const bodySchema = z.object({
   passportId: z.string().uuid(),
@@ -65,12 +71,31 @@ export async function POST(req: Request) {
   const admin = createAdminClient()
   const { data: passport, error: pErr } = await admin
     .from("passports")
-    .select("id, status, metadata, product_id")
+    .select("id, status, metadata, product_id, organization_id, product:products(organization_id)")
     .eq("id", passportId)
     .maybeSingle()
 
   if (pErr || !passport || passport.status === "revoked" || passport.status === "expired") {
     return Response.json({ error: "Passport not found" }, { status: 404 })
+  }
+
+  const productOrg = (
+    Array.isArray((passport as { product?: unknown }).product)
+      ? (passport as { product: Array<{ organization_id?: string | null }> }).product[0]
+      : (passport as { product?: { organization_id?: string | null } }).product
+  ) as { organization_id?: string | null } | null | undefined
+  const orgId =
+    (passport as { organization_id?: string | null }).organization_id ?? productOrg?.organization_id ?? null
+  const plan = await getSubscriptionTierForOrgId(orgId)
+  if (!PLAN_LIMITS[plan].allowTranslations) {
+    return Response.json(
+      {
+        error:
+          "Automated EU translations are available on Pro ($29/mo) and Scale. Starter Free is English only.",
+        code: "PLAN_TRANSLATIONS_LOCKED",
+      },
+      { status: 403 },
+    )
   }
 
   const { data: product } = await admin

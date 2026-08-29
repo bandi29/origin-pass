@@ -1,4 +1,5 @@
 import { after } from "next/server"
+import { headers } from "next/headers"
 import { findPassportByTokenOrSerial } from "@/backend/modules/passports/repository"
 import { buildRequestContext } from "@/backend/middleware/request-context"
 import { processScan } from "@/backend/modules/scans/process-scan"
@@ -6,6 +7,7 @@ import { verifyScanRedirectToken } from "@/lib/scan-redirect-token"
 import { resolvePassportTemplateKey } from "@/lib/passport-display-templates"
 import { formatBrandDisplayName } from "@/lib/format-brand-display-name"
 import { PassportPublicThemeView } from "@/components/templates/PassportPublicThemeView"
+import { PassportHreflangLinks } from "@/components/passports/PassportHreflangLinks"
 import { XCircle } from "lucide-react"
 import { spacing } from "@/design-system/tokens"
 import { NarrowContainer } from "@/components/layout/Containers"
@@ -18,6 +20,11 @@ import {
 } from "@/lib/public-passport-consumer"
 import { PassportConsumerHomeNav } from "@/components/passports/PassportConsumerHomeNav"
 import { getCachedPassportSnapshot } from "@/lib/passport-public-cache"
+import {
+  detectPreferredPassportLangFromAcceptLanguage,
+  isPublicPassportLang,
+  type PublicPassportLang,
+} from "@/lib/passport-eu-lang"
 
 /**
  * Architecture (post Month-1 refactor):
@@ -39,16 +46,53 @@ type WizardMeta = {
   timeline?: Array<{ stepName?: string; location?: string; date?: string }>
 }
 
+function publicAppOrigin(): string {
+  return (
+    process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ||
+    "https://origin-pass.vercel.app"
+  )
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ qrToken: string }>
+}) {
+  const { qrToken } = await params
+  const canonicalUrl = `${publicAppOrigin()}/p/${encodeURIComponent(qrToken)}`
+  return {
+    alternates: {
+      canonical: canonicalUrl,
+      languages: {
+        en: `${canonicalUrl}?lang=en`,
+        fr: `${canonicalUrl}?lang=fr`,
+        de: `${canonicalUrl}?lang=de`,
+        es: `${canonicalUrl}?lang=es`,
+        it: `${canonicalUrl}?lang=it`,
+        "x-default": canonicalUrl,
+      },
+    },
+  }
+}
+
 export default async function PassportPage({
   params,
   searchParams,
 }: {
   params: Promise<{ qrToken: string }>
-  searchParams: Promise<{ sk?: string; skt?: string; preview?: string; admin?: string }>
+  searchParams: Promise<{ sk?: string; skt?: string; preview?: string; admin?: string; lang?: string }>
 }) {
   const { qrToken } = await params
   const query = await searchParams
-  const { sk, skt, preview, admin } = query
+  const { sk, skt, preview, admin, lang: langParam } = query
+
+  const headerStore = await headers()
+  const fromQuery =
+    langParam && isPublicPassportLang(langParam.toLowerCase())
+      ? (langParam.toLowerCase() as PublicPassportLang)
+      : null
+  const initialLang =
+    fromQuery ?? detectPreferredPassportLangFromAcceptLanguage(headerStore.get("accept-language"))
 
   const passportRow = await findPassportByTokenOrSerial(qrToken)
   if (!passportRow) {
@@ -110,23 +154,28 @@ export default async function PassportPage({
   const brandHomeUrl = extractBrandHomeUrlFromMetadata(passport.metadata, productData?.metadata ?? null)
   const publicHomeHref = resolveConsumerHomeHref(brandHomeUrl)
   const adminPreview = isAdminPassportPreview({ preview, admin })
+  const canonicalUrl = `${publicAppOrigin()}/p/${encodeURIComponent(qrToken)}`
 
   return (
-    <PassportPublicThemeView
-      templateKey={templateKey}
-      qrToken={qrToken}
-      displayId={displayId}
-      passportId={passport.id}
-      productData={productData}
-      brandName={brandName}
-      batchData={batchData}
-      storyText={storyText}
-      structuredMaterials={structuredMaterials ?? null}
-      timelineSteps={timelineSteps ?? null}
-      publicHomeHref={publicHomeHref}
-      brandHomeUrl={brandHomeUrl}
-      adminPreview={adminPreview}
-    />
+    <>
+      <PassportHreflangLinks canonicalUrl={canonicalUrl} />
+      <PassportPublicThemeView
+        templateKey={templateKey}
+        qrToken={qrToken}
+        displayId={displayId}
+        passportId={passport.id}
+        productData={productData}
+        brandName={brandName}
+        batchData={batchData}
+        storyText={storyText}
+        structuredMaterials={structuredMaterials ?? null}
+        timelineSteps={timelineSteps ?? null}
+        publicHomeHref={publicHomeHref}
+        brandHomeUrl={brandHomeUrl}
+        adminPreview={adminPreview}
+        initialLang={initialLang}
+      />
+    </>
   )
 }
 

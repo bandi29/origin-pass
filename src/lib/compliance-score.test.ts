@@ -10,11 +10,11 @@ import {
 const VALID_GTIN = "00810012345675"
 
 describe("calculateComplianceScore", () => {
-  it("returns 0 and Non-Compliant for an empty passport", () => {
+  it("returns 0 and Incomplete for an empty passport", () => {
     const result = calculateComplianceScore({})
     expect(result.score).toBe(0)
-    expect(result.tier).toBe("Non-Compliant")
-    expect(result.riskLabel).toBe("High EU Border Risk")
+    expect(result.tier).toBe("Incomplete")
+    expect(result.riskLabel).toBe("Missing core catalog data")
     expect(result.missingItems).toHaveLength(5)
     expect(result.satisfied).toEqual({
       gtin: false,
@@ -35,8 +35,8 @@ describe("calculateComplianceScore", () => {
       COMPLIANCE_WEIGHTS.gtin + COMPLIANCE_WEIGHTS.origin + COMPLIANCE_WEIGHTS.materials
     expect(result.score).toBe(expected)
     expect(result.score).toBe(70)
-    expect(result.tier).toBe("Basic")
-    expect(result.riskLabel).toBe("Partial Compliance - Missing Fields")
+    expect(result.tier).toBe("Partial")
+    expect(result.riskLabel).toBe("Partial - missing catalog fields")
     expect(result.missingItems.map((m) => m.id).sort()).toEqual(["care", "documents"])
   })
 
@@ -58,7 +58,7 @@ describe("calculateComplianceScore", () => {
     expect(result.score).toBe(0)
   })
 
-  it("returns 100 and EU Export Ready when all criteria are met", () => {
+  it("returns 100 and Catalog Data Complete when all criteria are met", () => {
     const result = calculateComplianceScore({
       productGtin: VALID_GTIN,
       countryOfOrigin: "Portugal",
@@ -67,8 +67,8 @@ describe("calculateComplianceScore", () => {
       hasComplianceDocument: true,
     })
     expect(result.score).toBe(100)
-    expect(result.tier).toBe("EU Export Ready")
-    expect(result.riskLabel).toBe("EU ESPR Export Ready")
+    expect(result.tier).toBe("Catalog Data Complete")
+    expect(result.riskLabel).toBe("Catalog data complete")
     expect(result.missingItems).toEqual([])
     expect(Object.values(result.satisfied).every(Boolean)).toBe(true)
   })
@@ -98,15 +98,15 @@ describe("calculateComplianceScore", () => {
 
 describe("complianceTierForScore / complianceRiskLabelForScore", () => {
   it("maps score bands to tier and risk labels", () => {
-    expect(complianceTierForScore(0)).toBe("Non-Compliant")
-    expect(complianceTierForScore(49)).toBe("Non-Compliant")
-    expect(complianceTierForScore(50)).toBe("Basic")
-    expect(complianceTierForScore(85)).toBe("Basic")
-    expect(complianceTierForScore(86)).toBe("EU Export Ready")
-    expect(complianceTierForScore(100)).toBe("EU Export Ready")
+    expect(complianceTierForScore(0)).toBe("Incomplete")
+    expect(complianceTierForScore(49)).toBe("Incomplete")
+    expect(complianceTierForScore(50)).toBe("Partial")
+    expect(complianceTierForScore(85)).toBe("Partial")
+    expect(complianceTierForScore(86)).toBe("Catalog Data Complete")
+    expect(complianceTierForScore(100)).toBe("Catalog Data Complete")
 
-    expect(complianceRiskLabelForScore(40)).toBe("High EU Border Risk")
-    expect(complianceRiskLabelForScore(70)).toBe("Partial Compliance - Missing Fields")
-    expect(complianceRiskLabelForScore(90)).toBe("EU ESPR Export Ready")
+    expect(complianceRiskLabelForScore(40)).toBe("Missing core catalog data")
+    expect(complianceRiskLabelForScore(70)).toBe("Partial - missing catalog fields")
+    expect(complianceRiskLabelForScore(90)).toBe("Catalog data complete")
   })
 })

@@ -24,7 +24,7 @@ import {
   type ProductFieldLineage,
 } from "@/lib/field-lineage"
 import { cleanupProductCertificateEvidence } from "@/lib/supplier-certificates"
-import { normalizeTier, type SubscriptionTier } from "@/lib/shopify-billing"
+import { normalizeTier, type SubscriptionTier, PLAN_LIMITS, countPassportsForOrganization } from "@/lib/shopify-billing"
 import { getShopifyAdminToken } from "@/lib/shopify-admin-token"
 
 export type StoreConfigState = StoreConfigData & {
@@ -142,13 +142,28 @@ function publicPassportBaseDomain(): string {
 }
 
 /**
+ * Headless demo recording only. When `DEMO_RECORDING_SECRET` is set, Playwright
+ * injects `window.shopify.idToken() => "recording:<secret>"` so Server Actions
+ * can resolve the shop without a real App Bridge session — while still refusing
+ * arbitrary client-supplied shop domains in production.
+ */
+function recordingShopFromToken(shopParam: string, sessionToken?: string): string | null {
+  const secret = process.env.DEMO_RECORDING_SECRET?.trim()
+  if (!secret || !sessionToken || sessionToken !== `recording:${secret}`) return null
+  const shop = String(shopParam || "").trim()
+  return isValidShopDomain(shop) ? shop : null
+}
+
+/**
  * Resolve the authoritative shop for an action: the verified App Bridge session
  * token wins; in production a missing/invalid token fails; dev falls back to the
  * client-supplied param so `shopify app dev` works. Mirrors `updateStoreConfig`.
  */
 function resolveActionShop(shop: string, sessionToken?: string): string | null {
   const verified = verifyShopifySessionToken(sessionToken)
-  if (sessionToken && !verified) return null
+  if (sessionToken && !verified) {
+    return recordingShopFromToken(shop, sessionToken)
+  }
   const resolved = (verified?.shop ?? (process.env.NODE_ENV === "production" ? "" : shop)).trim()
   return isValidShopDomain(resolved) ? resolved : null
 }
@@ -319,6 +334,10 @@ export type StoreConfigWithFreshness = StoreConfigData & {
   lastSyncedAt: string | null
   /** Billing tier — drives evidence-upload and sync-volume gating in the UI. */
   subscriptionTier: SubscriptionTier
+  /** Live passport count for the shop org (plan ceiling metric). */
+  passportCount: number
+  /** Plan passport ceiling, or null when unlimited. */
+  maxPassports: number | null
 }
 
 /** Load persisted fallback config for the Shopify store (organizations row). */
@@ -328,6 +347,8 @@ export async function getStoreConfig(shopParam: string, sessionToken?: string): 
     careInstructions: "",
     lastSyncedAt: null,
     subscriptionTier: "free",
+    passportCount: 0,
+    maxPassports: PLAN_LIMITS.free.maxPassports,
   }
   const shop = resolveActionShop(shopParam, sessionToken)
   if (!shop) return empty
@@ -336,22 +357,28 @@ export async function getStoreConfig(shopParam: string, sessionToken?: string): 
     const supabase = createServerSupabaseClient()
     const { data } = await supabase
       .from("organizations")
-      .select("global_production_location, global_care_instructions, shopify_last_synced_at, subscription_tier")
+      .select("id, global_production_location, global_care_instructions, shopify_last_synced_at, subscription_tier")
       .eq("shop_domain", shop)
       .maybeSingle()
 
     const row = data as {
+      id?: string
       global_production_location?: string | null
       global_care_instructions?: string | null
       shopify_last_synced_at?: string | null
       subscription_tier?: string | null
     } | null
 
+    const tier = normalizeTier(row?.subscription_tier)
+    const passportCount = row?.id ? await countPassportsForOrganization(row.id) : 0
+
     return {
       productionLocation: row?.global_production_location ?? "",
       careInstructions: row?.global_care_instructions ?? "",
       lastSyncedAt: row?.shopify_last_synced_at ?? null,
-      subscriptionTier: normalizeTier(row?.subscription_tier),
+      subscriptionTier: tier,
+      passportCount,
+      maxPassports: PLAN_LIMITS[tier].maxPassports,
     }
   } catch {
     return empty
@@ -377,9 +404,14 @@ export async function updateStoreConfig(input: {
   // source of truth. A token is required in production; dev falls back to the
   // param so local `shopify app dev` without a live token still works.
   const verified = verifyShopifySessionToken(input.sessionToken)
-  const shop = (verified?.shop ?? (process.env.NODE_ENV === "production" ? "" : input.shop)).trim()
+  const recordingShop = recordingShopFromToken(input.shop, input.sessionToken)
+  const shop = (
+    verified?.shop ??
+    recordingShop ??
+    (process.env.NODE_ENV === "production" ? "" : input.shop)
+  ).trim()
 
-  if (input.sessionToken && !verified) {
+  if (input.sessionToken && !verified && !recordingShop) {
     return {
       ok: false,
       message: "Session expired — reload the app and try again.",
@@ -712,7 +744,12 @@ export async function updateProductPassportFields(input: {
   }))
 
   const verified = verifyShopifySessionToken(input.sessionToken)
-  const shop = (verified?.shop ?? (process.env.NODE_ENV === "production" ? "" : input.shop)).trim()
+  const recordingShop = recordingShopFromToken(input.shop, input.sessionToken)
+  const shop = (
+    verified?.shop ??
+    recordingShop ??
+    (process.env.NODE_ENV === "production" ? "" : input.shop)
+  ).trim()
 
   const fail = (message: string, variants: VariantGtinEditorRow[] = []): ProductPassportSaveState => ({
     ok: false,
@@ -726,7 +763,7 @@ export async function updateProductPassportFields(input: {
     variants,
   })
 
-  if (input.sessionToken && !verified) {
+  if (input.sessionToken && !verified && !recordingShop) {
     return fail("Session expired — reload the app and try again.")
   }
   if (!isValidShopDomain(shop) || !/^[0-9a-f-]{36}$/i.test(input.productId)) {

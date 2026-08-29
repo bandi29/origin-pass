@@ -4,7 +4,9 @@ import { isMappingComplete } from "@/lib/import-products/mapping"
 import { checkRateLimit } from "@/lib/import-products/rate-limit"
 import { enqueueProductImport } from "@/lib/import-products/queue"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { ensureBrandProfile } from "@/lib/tenancy"
+import { PLAN_LIMITS, getSubscriptionTierForOrgId } from "@/lib/shopify-billing"
 
 export const runtime = "nodejs"
 
@@ -33,6 +35,25 @@ export async function POST(req: Request) {
   }
 
   await ensureBrandProfile(supabase, user)
+
+  const admin = createAdminClient()
+  const { data: appUser } = await admin
+    .from("users")
+    .select("organization_id")
+    .eq("id", user.id)
+    .maybeSingle()
+  const orgId = (appUser as { organization_id?: string | null } | null)?.organization_id ?? null
+  const plan = await getSubscriptionTierForOrgId(orgId)
+  if (!PLAN_LIMITS[plan].allowBulkCsv) {
+    return Response.json(
+      {
+        error:
+          "Bulk CSV import/export is available on the Scale plan ($79/mo). Upgrade to unlock this utility.",
+        code: "PLAN_BULK_CSV_LOCKED",
+      },
+      { status: 403 },
+    )
+  }
 
   let body: Body
   try {

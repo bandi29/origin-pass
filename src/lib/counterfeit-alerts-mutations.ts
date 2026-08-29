@@ -9,6 +9,7 @@ import {
   appendStatusHistory,
   writeAudit,
 } from "@/lib/counterfeit-alerts-server"
+import { schedulePassportStorefrontSync } from "@/lib/shopify-dpp-storefront-sync"
 export async function loadProductRisk(productId: string): Promise<{
   risk_score: number
   verification_status: string
@@ -85,6 +86,7 @@ export async function applyInvestigationSideEffects(input: {
             .from("passports")
             .update({ status: "revoked" })
             .eq("id", input.passportId)
+          schedulePassportStorefrontSync(input.passportId)
         }
         break
       case "mark_false_positive":

@@ -7,6 +7,13 @@ import { getScopedProductIds } from "@/backend/modules/organizations/scope"
 import { isValidUuid } from "@/lib/security"
 import { generateSerialId } from "@/lib/crypto"
 import { generateVerifyToken } from "@/lib/verify-token"
+import { schedulePassportStorefrontSync } from "@/lib/shopify-dpp-storefront-sync"
+import {
+  canCreatePassports,
+  countPassportsForOrganization,
+  getSubscriptionTierForOrgId,
+  upgradePassportLimitMessage,
+} from "@/lib/shopify-billing"
 
 export type CreatePassportInput = {
   productId: string
@@ -70,6 +77,24 @@ export async function createPassportAction(
   }
 
   const admin = createAdminClient()
+
+  const { data: productRow } = await admin
+    .from("products")
+    .select("organization_id")
+    .eq("id", productId)
+    .maybeSingle()
+  const orgId = (productRow as { organization_id?: string | null } | null)?.organization_id ?? null
+  if (orgId) {
+    const tier = await getSubscriptionTierForOrgId(orgId)
+    const passportCount = await countPassportsForOrganization(orgId)
+    if (!canCreatePassports(tier, passportCount, batchSize)) {
+      return {
+        success: false,
+        error: upgradePassportLimitMessage(passportCount, tier),
+      }
+    }
+  }
+
   let lastCreated: {
     id: string
     passport_uid: string
@@ -117,6 +142,7 @@ export async function createPassportAction(
   }
 
   if (lastCreated) {
+    schedulePassportStorefrontSync(lastCreated.id)
     return {
       success: true,
       passport: {

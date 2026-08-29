@@ -5,6 +5,7 @@ export type PassportThemeProduct = {
   story: string | null
   materials: string | null
   origin: string | null
+  lifecycle?: string | null
   image_url: string | null
   brand_id: string | null
   metadata: Record<string, unknown> | null
@@ -38,6 +39,8 @@ export type PassportThemeProps = {
   brandHomeUrl?: string | null
   /** Dashboard admin opened this page with `?preview=true` — show Close Preview instead of consumer Home. */
   adminPreview?: boolean
+  /** Preferred public language (Accept-Language / ?lang=). */
+  initialLang?: import("@/lib/passport-eu-lang").PublicPassportLang
 }
 
 export type PassportThemeComponentProps = PassportThemeProps & {

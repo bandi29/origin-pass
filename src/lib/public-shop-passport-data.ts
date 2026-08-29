@@ -41,6 +41,9 @@ type StoreRow = {
 
 type ProductRow = {
   id: string
+  /** Locally synced Shopify title/image — fallback when the live Shopify call fails. */
+  name: string | null
+  image_url: string | null
   materials: string | null
   story: string | null
   compliance_data: unknown
@@ -95,7 +98,7 @@ async function fetchProductByExternalId(
     const supabase = createServerSupabaseClient()
     const { data, error } = await supabase
       .from("products")
-      .select("id, materials, story, compliance_data")
+      .select("id, name, image_url, materials, story, compliance_data")
       .eq("organization_id", organizationId)
       .eq("external_product_id", productId)
       .maybeSingle()
@@ -210,8 +213,13 @@ export async function loadPublicShopPassportData(input: {
     }
 
     return {
-      productTitle: snapshot?.title ?? null,
-      imageUrl: snapshot?.imageUrl ?? null,
+      // The Shopify snapshot is a LIVE Admin API call: it returns null whenever the
+      // offline token expires, the store disconnects, or Shopify is unreachable.
+      // Without this fallback every public passport silently degrades to
+      // "Product passport" with no image — on a consumer-facing artifact reached by
+      // QR scan. The synced values in `products` are the durable source.
+      productTitle: snapshot?.title ?? product?.name ?? null,
+      imageUrl: snapshot?.imageUrl ?? product?.image_url ?? null,
       brandName: store.name ?? null,
       productionLocation: resolvedFieldDisplayValue(
         VERIFICATION_FIELD_KEYS.PRODUCTION_LOCATION,

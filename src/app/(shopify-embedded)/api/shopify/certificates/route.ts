@@ -168,11 +168,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Tier gate (server-side — the UI banner alone is not enforcement): evidence
-  // hosting starts on the Grower plan.
+  // hosting starts on the Pro plan.
   const tier = await getSubscriptionTier(shop)
   if (!TIER_LIMITS[tier].evidenceUploads) {
     return NextResponse.json(
-      { ok: false, message: "Supplier verification uploads are available on the Grower plan ($29/mo). Upgrade to attach evidence." },
+      {
+        ok: false,
+        message:
+          "Supplier verification uploads are available on the Pro plan ($29/mo). Upgrade to attach evidence.",
+      },
       { status: 403 },
     )
   }

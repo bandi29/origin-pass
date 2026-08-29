@@ -300,6 +300,8 @@ describe("graceful degradation", () => {
       careInstructions: "",
       lastSyncedAt: null,
       subscriptionTier: "free",
+      passportCount: 0,
+      maxPassports: 10,
     })
   })
 

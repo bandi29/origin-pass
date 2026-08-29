@@ -1,0 +1,24 @@
+{% comment %} Inner trigger markup shared by button + anchor variants. {% endcomment %}
+<svg class="originpass-dpp__icon" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
+  <path
+    d="M10 1.75 16.5 5v5.25c0 4.05-2.7 7.8-6.5 8.95C6.2 18.05 3.5 14.3 3.5 10.25V5L10 1.75Z"
+    stroke="currentColor"
+    stroke-width="1.4"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M7.25 10.1 9.1 11.95l3.85-4.1"
+    stroke="currentColor"
+    stroke-width="1.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
+{% if badge_style == 'card' %}
+  <span class="originpass-dpp__card-copy">
+    <span class="originpass-dpp__card-kicker">OriginPass</span>
+    <span class="originpass-dpp__label">{{ button_text | escape }}</span>
+  </span>
+{% else %}
+  <span class="originpass-dpp__label">{{ button_text | escape }}</span>
+{% endif %}

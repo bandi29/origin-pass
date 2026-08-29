@@ -43,6 +43,7 @@ export default async function PassportDetailPage({ params }: PageProps) {
       verificationComplianceStatus={payload.verificationComplianceStatus}
       verificationHistory={payload.verificationHistory}
       mode="view"
+      esprScore={payload.esprScore}
     />
   )
 }

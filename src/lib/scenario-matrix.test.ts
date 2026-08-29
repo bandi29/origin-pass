@@ -78,12 +78,39 @@ describe("Scenario matrix - PDF & Scorecard (PDF-01 PDF-04, SCR-01 SCR-02)", () 
 
   it("PDF-04: Admin Export Print PDF modal is wired on Passport Detail QR tab", () => {
     const modal = readSrc("src/components/admin/ExportPdfModal.tsx")
-    expect(modal).toContain("Export Print PDF")
-    expect(modal).toContain("Download PDF")
+    expect(modal).toContain("Print &amp; Export QR")
+    expect(modal).toContain("single-png")
+    expect(modal).toContain("single-svg")
+    expect(modal).toContain("sheet-pdf")
     expect(modal).toContain("/api/admin/passports/")
+    expect(modal).toContain("export-qr")
     const qrTab = readSrc("src/components/passports/PassportQRTab.tsx")
     expect(qrTab).toContain("ExportPdfModal")
-    expect(qrTab).toContain("Export Print PDF")
+    const detail = readSrc("src/components/passports/PassportDetailView.tsx")
+    expect(detail).toContain("Print &amp; Export QR")
+    expect(detail).toContain("ExportPdfModal")
+  })
+
+  it("ESPR-01: GPSR-weighted export readiness scorecard is wired on passport overview", () => {
+    const score = readSrc("src/lib/complianceScore.ts")
+    expect(score).toContain("computeEsprComplianceScore")
+    expect(score).toContain("euResponsiblePerson")
+    const card = readSrc("src/components/passports/EsprReadinessScorecard.tsx")
+    expect(card).toContain("ESPR Compliance Score")
+    const overview = readSrc("src/components/passports/PassportOverviewTab.tsx")
+    expect(overview).toContain("EsprReadinessScorecard")
+  })
+
+  it("I18N-01: public passport language switcher + Accept-Language helpers exist", () => {
+    const lang = readSrc("src/lib/passport-eu-lang.ts")
+    expect(lang).toContain("parseAcceptLanguageHeader")
+    expect(lang).toContain("detectPreferredPassportLangFromAcceptLanguage")
+    const i18n = readSrc("src/components/passports/PassportPublicI18n.tsx")
+    expect(i18n).toContain("Passport language")
+    expect(i18n).toContain("initialLang")
+    const page = readSrc("src/app/p/[qrToken]/page.tsx")
+    expect(page).toContain("generateMetadata")
+    expect(page).toContain("PassportHreflangLinks")
   })
 
   it("SCR-01: scorecard recalculates when mandatory fields are toggled", () => {
@@ -95,7 +122,7 @@ describe("Scenario matrix - PDF & Scorecard (PDF-01 PDF-04, SCR-01 SCR-02)", () 
       hasComplianceDocument: true,
     })
     expect(full.score).toBe(100)
-    expect(full.riskLabel).toBe("EU ESPR Export Ready")
+    expect(full.riskLabel).toBe("Catalog data complete")
 
     const withoutOrigin = calculateComplianceScore({
       productGtin: "00810012345675",
@@ -105,7 +132,7 @@ describe("Scenario matrix - PDF & Scorecard (PDF-01 PDF-04, SCR-01 SCR-02)", () 
       hasComplianceDocument: true,
     })
     expect(withoutOrigin.score).toBe(80)
-    expect(withoutOrigin.riskLabel).toBe("Partial Compliance - Missing Fields")
+    expect(withoutOrigin.riskLabel).toBe("Partial - missing catalog fields")
     expect(withoutOrigin.missingItems.some((m) => m.id === "origin")).toBe(true)
 
     const editor = readSrc(
@@ -347,21 +374,24 @@ describe("Scenario matrix - Shopify admin (ADM-01 ADM-04)", () => {
 })
 
 describe("Scenario matrix - Billing (BIL-01 BIL-04)", () => {
-  it("BIL-01: free tier enforces sync/product caps and upgrade copy ($29 / $79)", () => {
-    expect(TIER_LIMITS.free.maxSyncedProducts).toBe(15)
+  it("BIL-01: free tier enforces passport caps and upgrade copy ($29 / $79)", () => {
+    expect(TIER_LIMITS.free.maxPassports).toBe(10)
     expect(TIER_LIMITS.free.evidenceUploads).toBe(false)
-    expect(PAID_PLANS.grower.price).toBe(29)
-    expect(PAID_PLANS.enterprise.price).toBe(79)
+    expect(PAID_PLANS["pro-plan"].price).toBe(29)
+    expect(PAID_PLANS["scale-plan"].price).toBe(79)
     const job = readSrc("src/lib/shopify-catalog-sync-job.ts")
-    expect(job).toContain("Upgrade to Grower ($29/mo)")
-    expect(job).toContain("Enterprise ($79/mo)")
+    expect(job).toContain("Upgrade to Pro ($29/mo)")
+    expect(job).toContain("Scale ($79/mo)")
   })
 
-  it("BIL-02: paid plan names map to grower/enterprise tiers", () => {
-    expect(tierForSubscriptionName("OriginPass Grower")).toBe("grower")
-    expect(tierForSubscriptionName("OriginPass Enterprise")).toBe("enterprise")
-    expect(normalizeTier("grower")).toBe("grower")
-    expect(TIER_LIMITS.grower.evidenceUploads).toBe(true)
+  it("BIL-02: paid plan names map to pro-plan/scale-plan handles", () => {
+    expect(tierForSubscriptionName("OriginPass Pro (pro-plan)")).toBe("pro-plan")
+    expect(tierForSubscriptionName("OriginPass Scale (scale-plan)")).toBe("scale-plan")
+    expect(tierForSubscriptionName("OriginPass Grower")).toBe("pro-plan")
+    expect(tierForSubscriptionName("OriginPass Enterprise")).toBe("scale-plan")
+    expect(normalizeTier("grower")).toBe("pro-plan")
+    expect(normalizeTier("pro-plan")).toBe("pro-plan")
+    expect(TIER_LIMITS["pro-plan"].evidenceUploads).toBe(true)
   })
 
   it("BIL-03: subscription cancel helper exists for downgrade path", () => {

@@ -48,6 +48,7 @@ export function LuxuryTheme({
   storyText,
   structuredMaterials,
   timelineSteps,
+  initialLang = "en",
 }: PassportThemeComponentProps) {
   const stackClass = embed ? "space-y-3" : spacing.stackDense
 
@@ -132,13 +133,6 @@ export function LuxuryTheme({
         </dl>
       </div>
 
-      <div className={`${infoCard} text-sm text-slate-300`}>
-        <h2 className={sectionLabel}>Origin</h2>
-        <p className="font-medium text-amber-50">
-          {productData?.origin?.trim() || batchData?.location || "—"}
-        </p>
-      </div>
-
       <div className="rounded-3xl border border-amber-200/15 bg-slate-950/40 p-1">
         <PassportPublicI18n
           passportId={passportId}
@@ -146,11 +140,14 @@ export function LuxuryTheme({
           brandName={brandName}
           initialStory={storyText}
           fallbackStory={`${brandName} publishes digital product records so customers can verify authenticity in one scan.`}
+          initialOrigin={productData?.origin?.trim() || batchData?.location || null}
+          initialCare={productData?.lifecycle?.trim() || null}
           structuredMaterials={structuredMaterials ?? null}
           legacyMaterialsText={productData?.materials ?? null}
           timelineSteps={timelineSteps ?? null}
           sharePreview={sharePreview}
           themeVariant="luxury"
+          initialLang={initialLang}
         />
       </div>
 

@@ -1,0 +1,13 @@
+{
+  "badge": {
+    "default_label": "View Digital Product Passport 🇪🇺",
+    "loading": "Loading passport…",
+    "error": "Passport details are unavailable right now.",
+    "open_full": "Open full passport",
+    "close": "Close",
+    "materials": "Materials",
+    "origin": "Origin",
+    "care": "Care",
+    "story": "Story"
+  }
+}

@@ -76,7 +76,12 @@ export function CreatePassportForm({ products, createAnotherHref = "/dashboard/p
         originCountry: originCountry || undefined,
       })
       if (!result.success) {
-        setError(result.error ?? "Failed to create passport")
+        const msg = result.error ?? "Failed to create passport"
+        setError(
+          /Upgrade to Pro|passport limit|Starter Free/i.test(msg)
+            ? `${msg} Open Billing in your Shopify app to upgrade.`
+            : msg,
+        )
         return
       }
       if (result.passport) {

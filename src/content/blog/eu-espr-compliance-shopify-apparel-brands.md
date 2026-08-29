@@ -125,7 +125,7 @@ Your GTIN is the backbone of the whole system. Everything else hangs off it.
 
 Rather than auditing a spreadsheet of 400 SKUs by hand, score them.
 
-OriginPass gives every product a **0–100% EU Compliance Readiness score**, weighted across the mandatory fields:
+OriginPass gives every product a **0–100% catalog data completeness score**, weighted across the core fields:
 
 | Criterion | Weight |
 |---|---|
@@ -137,11 +137,13 @@ OriginPass gives every product a **0–100% EU Compliance Readiness score**, wei
 
 Scores resolve into three plain-language tiers:
 
-- **Below 50% — High EU Border Risk**
-- **50–85% — Partial Compliance, missing fields**
-- **86%+ — EU ESPR Export Ready**
+- **Below 50% — Missing core catalog data**
+- **50–85% — Partial, missing catalog fields**
+- **86%+ — Catalog data complete**
 
-Critically, the scorecard doesn't just grade you — it lists **exactly which fields are missing**, each linking straight to the field that fixes it. A merchant can take a product from "High Risk" to "Export Ready" in about a minute.
+Critically, the scorecard doesn't just grade you — it lists **exactly which fields are missing**, each linking straight to the field that fixes it. A merchant can take a product from "Incomplete" to "Catalog data complete" in about a minute.
+
+Full EU ESPR readiness — which also covers **GPSR** data such as your EU responsible person and safety information — is scored separately on each product's passport, so a complete catalog is the first step rather than the whole picture.
 
 ### Step 3 — Export print-ready hangtags without changing your packaging workflow
 
@@ -186,7 +188,7 @@ EU ESPR compliance looks enormous from the outside and turns out to be a sequenc
 👉 **Install OriginPass on the Shopify App Store and run a free 0–100% compliance audit on your catalog:**
 [https://apps.shopify.com/originpass](https://apps.shopify.com/originpass)
 
-You'll know within minutes which products are **EU Export Ready** — and precisely what's missing on the ones that aren't.
+You'll know within minutes which products have **complete catalog data** — and precisely what's missing on the ones that don't.
 
 ---
 

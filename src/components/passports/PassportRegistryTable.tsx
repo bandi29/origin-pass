@@ -5,6 +5,7 @@ import { Link } from "@/i18n/navigation"
 import { ChevronRight } from "lucide-react"
 import clsx from "clsx"
 import type { PassportRegistryRow } from "@/lib/passport-registry-map"
+import { PrintExportQrButton } from "./PrintExportQrButton"
 
 export const PASSPORT_REGISTRY_PAGE_SIZE = 8
 
@@ -107,6 +108,12 @@ export function PassportRegistryTable({
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="inline-flex items-center justify-end gap-3">
+                    <PrintExportQrButton
+                      passportId={item.id}
+                      serialNumber={item.serial_id}
+                      className="text-sm font-medium text-slate-600 transition hover:text-slate-900"
+                      label="Print"
+                    />
                     <Link
                       href={`/dashboard/product-passports/${item.id}`}
                       className="inline-flex items-center gap-1 text-sm text-blue-600 transition hover:text-blue-700"
