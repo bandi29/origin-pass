@@ -130,7 +130,7 @@ export default function DocumentationPage() {
                                     <h3 className="font-semibold text-slate-900 mb-2">Early pricing</h3>
                                     <ul className="space-y-2 text-sm text-slate-700">
                                         <li><strong>Starter:</strong> $19-$39 / month</li>
-                                        <li><strong>Growth:</strong> ~$79 / month</li>
+                                        <li><strong>Scale:</strong> $49 / month</li>
                                         <li><strong>Value metric:</strong> products + monthly scans</li>
                                         <li><strong>Entry offer:</strong> first passport free</li>
                                     </ul>

@@ -1,7 +1,7 @@
 /**
  * Shopify Billing — 3-tier subscription architecture.
  *
- * Starter Free ($0) → Pro (`pro-plan`, $29/mo) → Scale (`scale-plan`, $79/mo).
+ * Starter Free ($0) → Pro (`pro-plan`, $29/mo) → Scale (`scale-plan`, $49/mo).
  *
  * Active plan is stored on `organizations.subscription_tier` as the Shopify plan
  * handle (`free` | `pro-plan` | `scale-plan`). GraphQL `appSubscriptionCreate`
@@ -27,7 +27,7 @@ export type SubscriptionTier = PlanHandle
 
 export const PAID_PLANS = {
   "pro-plan": { name: "OriginPass Pro", handle: "pro-plan" as const, price: 29 },
-  "scale-plan": { name: "OriginPass Scale", handle: "scale-plan" as const, price: 79 },
+  "scale-plan": { name: "OriginPass Scale", handle: "scale-plan" as const, price: 49 },
 } as const
 
 export type PaidPlan = keyof typeof PAID_PLANS

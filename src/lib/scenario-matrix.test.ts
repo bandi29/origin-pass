@@ -374,14 +374,14 @@ describe("Scenario matrix - Shopify admin (ADM-01 ADM-04)", () => {
 })
 
 describe("Scenario matrix - Billing (BIL-01 BIL-04)", () => {
-  it("BIL-01: free tier enforces passport caps and upgrade copy ($29 / $79)", () => {
+  it("BIL-01: free tier enforces passport caps and upgrade copy ($29 / $49)", () => {
     expect(TIER_LIMITS.free.maxPassports).toBe(10)
     expect(TIER_LIMITS.free.evidenceUploads).toBe(false)
     expect(PAID_PLANS["pro-plan"].price).toBe(29)
-    expect(PAID_PLANS["scale-plan"].price).toBe(79)
+    expect(PAID_PLANS["scale-plan"].price).toBe(49)
     const job = readSrc("src/lib/shopify-catalog-sync-job.ts")
     expect(job).toContain("Upgrade to Pro ($29/mo)")
-    expect(job).toContain("Scale ($79/mo)")
+    expect(job).toContain("Scale ($49/mo)")
   })
 
   it("BIL-02: paid plan names map to pro-plan/scale-plan handles", () => {

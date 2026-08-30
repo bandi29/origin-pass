@@ -31,7 +31,7 @@ export function PlanManagementCard({
             <p className="text-sm font-semibold text-[#202223]">Plan — Starter Free</p>
             <p className="text-xs leading-relaxed text-[#6d7175]">
               Up to 10 passports, English only. Upgrade to Pro ($29/mo) for 250 passports, EU
-              translations, PDF evidence, and Avery/Thermal labels — or Scale ($79/mo) for unlimited
+              translations, PDF evidence, and Avery/Thermal labels — or Scale ($49/mo) for unlimited
               plus bulk CSV and badge customization.
             </p>
           </div>

@@ -66,7 +66,7 @@ export async function queuePassportBatchImportAction(input: {
       success: false,
       code: "PLAN_BULK_CSV_LOCKED",
       error:
-        "Bulk CSV import/export is available on the Scale plan ($79/mo). Upgrade to unlock this utility.",
+        "Bulk CSV import/export is available on the Scale plan ($49/mo). Upgrade to unlock this utility.",
     }
   }
 

@@ -272,8 +272,8 @@ export async function processCatalogSyncJob(
     const hitPlanLimit = tierLimit != null && processedCount >= remainingSlots
     const message = hitPlanLimit
       ? tier === "free"
-        ? `Stopped at the Starter Free limit of ${tierLimit} passports. Upgrade to Pro ($29/mo) for up to 250 items, or Scale ($79/mo) for unlimited.`
-        : `Stopped at the Pro plan limit of ${tierLimit} passports. Upgrade to Scale ($79/mo) for unlimited passports and high-volume Bulk API syncs.`
+        ? `Stopped at the Starter Free limit of ${tierLimit} passports. Upgrade to Pro ($29/mo) for up to 250 items, or Scale ($49/mo) for unlimited.`
+        : `Stopped at the Pro plan limit of ${tierLimit} passports. Upgrade to Scale ($49/mo) for unlimited passports and high-volume Bulk API syncs.`
       : `Synced the first ${processedCount.toLocaleString()} of ${totalLabel} products. Catalogs this large need the background sync infrastructure — deploy the sync worker (Redis + worker service) to import everything.`
     const outcome = { ok: false, message, processed: processedCount, total: totalProducts, capped: true }
     await finishSharedSyncProgress(shop, outcome)
